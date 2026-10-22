@@ -14,7 +14,8 @@ like *Cao Cao Den* (曹操傳) — phase-based tactics on a grid, where your who
 - Captured officers can be recruited, released or executed. Hold all 45 cities to unite the realm.
 
 ## Training missions, treasures and defences
-- **Missions** every month: bandit hunts, Yellow Turban remnants, the southern tribes, raiders, a champion's trial and treasure hunts. Up to six officers at full strength, for experience, gold, chests on the field and a guaranteed treasure.
+- **Missions** — six every month from fourteen kinds: bandit hunts, Yellow Turban remnants, the southern tribes, raiders, river pirates, sorcerers, the Qiang, the Shanyue, a champion's trial, treasure hunts, holding a village against waves, escorting a supply wagon, and now and then a legendary general of old (Xiang Yu, Han Xin, Bai Qi…) who drops a legendary treasure. Up to six officers from any of your cities, at full strength, for experience (with a bonus for everyone who goes), gold, chests on the field and a guaranteed treasure.
+- **The Training Ground** is always open: spar at Easy, Even, Hard or Brutal for double experience.
 - **Five hundred treasures** in five rarities, each with its own name and mix of over forty powers: regen, lifesteal, thorns, pre-emptive strikes, overwhelm (no counters), undying, pierce, long shot, charge, command and bulwark auras, element boosts, economy, resolve, immunities, terrain-walking, experience and fortune.
 - **Defences** that make a city hard to take: arrow towers on the walls that shoot on their own and must be torn down, barricades that stop cavalry, hidden pit traps, and moats crossed only at the gates. Every warlord builds them.
 

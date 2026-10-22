@@ -446,16 +446,24 @@ export const MISSION_KINDS = {
   tribes:   { name: ['平定蠻族', 'Pacify the Tribes'], desc: ['南方的部族騷擾邊境。他們熟悉山林，小心。', 'Southern tribes raid the border. They know the forests — beware.'], goal: 'rout', lines: ['brawl', 'brawl', 'bandit', 'arch', 'brawl', 'hbow', 'bandit', 'brawl'], names: ['蠻王', '藤甲兵', '蠻兵', '毒箭手', '蠻兵', '蠻騎', '蠻兵', '藤甲兵'], themes: ['jungle', 'south'] },
   raiders:  { name: ['擊退賊騎', 'Drive Off Raiders'], desc: ['塞外的騎兵來去如風。用步兵與弓兵擋住他們。', 'Riders from beyond the wall strike like the wind. Meet them with spears and bows.'], goal: 'rout', lines: ['cav', 'hbow', 'cav', 'hbow', 'cav', 'cav', 'hbow', 'cav'], names: ['賊騎首領', '賊騎', '胡騎', '騎射手', '賊騎', '胡騎', '騎射手', '賊騎'], themes: ['frontier', 'west'] },
   champion: { name: ['猛將試煉', 'Trial of Champions'], desc: ['一位無名猛將向天下英雄挑戰。擊敗他，奪下他的神兵。', 'A nameless champion challenges every hero in the land. Beat him and take his weapon.'], goal: 'leader', champion: true, lines: ['cav', 'inf', 'inf', 'arch', 'arch', 'inf'], names: ['無名猛將', '親衛', '親衛', '弓衛', '弓衛', '親衛'], themes: ['plains', 'north', 'river'] },
+  pirates:  { name: ['水賊討伐', 'River Pirates'], desc: ['江上的水賊打劫往來船隻，佔據河岸。渡河擊潰他們。', 'River pirates rob the boats and hold the banks. Cross over and break them.'], goal: 'rout', lines: ['bandit', 'arch', 'bandit', 'arch', 'bandit', 'hbow', 'arch', 'bandit'], names: ['水賊頭目', '水賊弓手', '水賊', '弩手', '水賊', '水寨騎兵', '弓手', '水賊'], themes: ['river'] },
+  sorcery:  { name: ['妖術師作亂', 'Sorcerers'], desc: ['妖人以邪術蠱惑百姓，會用混亂、中毒、封殺。擊敗為首的妖術師。', 'Sorcerers bewitch the people with confusion, poison and silence. Defeat their master.'], goal: 'leader', lines: ['taoist', 'taoist', 'inf', 'taoist', 'bandit', 'strat', 'inf', 'taoist'], names: ['妖術師', '妖道', '信徒', '巫女', '狂信者', '術士', '信徒', '妖道'], themes: ['jungle', 'shu', 'south'], int: 85 },
+  qiang:    { name: ['西羌入寇', 'Qiang Incursion'], desc: ['羌族騎兵越過邊塞，在荒原上縱橫馳騁。', 'Qiang horsemen pour over the frontier and ride across the wastes.'], goal: 'rout', lines: ['hbow', 'cav', 'hbow', 'cav', 'brawl', 'hbow', 'cav', 'hbow'], names: ['羌王', '羌騎', '羌弓騎', '羌騎', '羌勇士', '羌弓騎', '羌騎', '羌弓騎'], themes: ['west', 'frontier'] },
+  shanyue:  { name: ['山越叛亂', 'Shanyue Revolt'], desc: ['山越據險而守，熟悉山林，伏兵四起。', 'The Shanyue hold the high ground; they know every hill and spring ambushes.'], goal: 'leader', lines: ['bandit', 'brawl', 'arch', 'bandit', 'brawl', 'arch', 'bandit', 'brawl'], names: ['山越首領', '山越勇士', '山越弓手', '山越兵', '山越勇士', '山越弓手', '山越兵', '山越勇士'], themes: ['south', 'shu', 'jungle'] },
+  defend:   { name: ['守衛村莊', 'Defend the Village'], desc: ['盜匪要來洗劫村莊。守住 10 回合，敵人會從兩側不斷增援。', 'Raiders are coming for the village. Hold for 10 turns as they keep coming from both sides.'], goal: 'survive', layout: 'center', limit: 10, waves: [3, 6], lines: ['bandit', 'cav', 'bandit', 'arch', 'inf', 'bandit', 'cav', 'arch'], names: ['盜匪頭目', '馬賊', '盜匪', '弓手', '流寇', '盜匪', '馬賊', '弓手'], themes: ['plains', 'north', 'south'] },
+  escort:   { name: ['護送糧隊', 'Escort the Supplies'], desc: ['糧車在路上被伏擊了！保護糧車撐過 8 回合，糧車被毀就失敗。', 'The supply wagons are ambushed! Keep the wagon alive for 8 turns — if it falls, the mission fails.'], goal: 'survive', layout: 'center', limit: 8, vip: true, waves: [3, 5], lines: ['bandit', 'cav', 'arch', 'bandit', 'cav', 'bandit', 'arch', 'cav'], names: ['伏兵首領', '伏兵騎', '伏兵弓手', '伏兵', '伏兵騎', '伏兵', '伏兵弓手', '伏兵騎'], themes: ['plains', 'north', 'shu', 'west'] },
+  legend:   { name: ['傳說之將', 'A Legend Returns'], desc: ['古戰場上出現了傳說中的名將之魂，只有真正的英雄能擊敗他。勝者可得神器。', 'The spirit of a legendary general walks an old battlefield. Only a true hero can beat him — and claim a legendary treasure.'], goal: 'leader', legend: true, lines: ['cav', 'inf', 'inf', 'arch', 'arch', 'cav', 'inf', 'arch'], names: ['?', '親衛', '親衛', '弓衛', '弓衛', '騎衛', '親衛', '弓衛'], themes: ['plains', 'north', 'river'], rare: true },
+  drill:    { name: ['演武場', 'Training Ground'], desc: ['和軍中的精兵對練。沒有寶物，但經驗加倍，隨時可以來。', 'Spar with picked troops of your own army. No treasure, but double experience — come any time.'], goal: 'rout', lines: ['inf', 'cav', 'arch', 'strat', 'inf', 'hbow', 'cav', 'taoist'], names: ['教頭', '騎兵教官', '弓術教官', '軍師教官', '步兵教官', '騎射教官', '騎兵教官', '道術教官'], themes: ['plains', 'north', 'south', 'shu', 'west', 'frontier'], hidden: true },
   treasure: { name: ['尋寶探險', 'Treasure Hunt'], desc: ['古墓裡藏著前朝的寶物，盜墓賊也在找。搶先打開寶箱！', 'An old tomb hides treasures of a fallen dynasty, and grave robbers are after them too. Get to the chests first!'], goal: 'rout', chests: 5, lines: ['strat', 'bandit', 'arch', 'bandit', 'inf', 'bandit', 'arch', 'bandit'], names: ['盜墓賊首', '盜墓賊', '弩手', '盜墓賊', '守墓人', '盜墓賊', '弩手', '盜墓賊'], themes: ['shu', 'west', 'jungle', 'south'] },
 };
 export function rollMissions(G) {
   const r = dice(G, 991), mine = citiesOf(G, G.player); if (!mine.length) { G.missions = []; return; }
   const offs = officersOf(G, G.player).sort((a, b) => b.lv - a.lv).slice(0, 6), avg = offs.length ? offs.reduce((s2, o) => s2 + o.lv, 0) / offs.length : 5;
-  const kinds = Object.keys(MISSION_KINDS), out = [];
-  for (let i = 0; i < 4; i++) {
-    const kind = kinds[Math.floor(r() * kinds.length)], K = MISSION_KINDS[kind], stars = 1 + Math.floor(r() * 5);
+  const kinds = Object.keys(MISSION_KINDS).filter((k) => !MISSION_KINDS[k].hidden && !MISSION_KINDS[k].rare), out = [];
+  for (let i = 0; i < 6; i++) {
+    const kind = i === 5 && r() < 0.2 ? 'legend' : kinds[Math.floor(r() * kinds.length)], K = MISSION_KINDS[kind], stars = kind === 'legend' ? 5 : 1 + Math.floor(r() * 5);
     const c = mine[Math.floor(r() * mine.length)];
-    out.push({ id: `${G.t}-${i}`, kind, city: c.id, stars, lv: Math.max(1, Math.round(avg + (stars - 3) * 3)), foes: Math.min(K.lines.length, 3 + stars), gold: 150 * stars + Math.round(r() * 100), rarity: Math.min(5, Math.max(1, stars - (r() < 0.5 ? 1 : 0))), theme: K.themes[Math.floor(r() * K.themes.length)], seed: Math.floor(r() * 1e9) });
+    out.push({ id: `${G.t}-${i}`, kind, city: c.id, stars, lv: Math.max(1, Math.round(avg + (stars - 3) * 3 + (kind === 'legend' ? 4 : 0))), foes: Math.min(K.lines.length, 3 + stars), gold: 150 * stars + Math.round(r() * 100), rarity: Math.min(5, Math.max(1, stars - (r() < 0.5 ? 1 : 0))), theme: K.themes[Math.floor(r() * K.themes.length)], seed: Math.floor(r() * 1e9) });
   }
   G.missions = out;
 }
@@ -467,14 +475,39 @@ export function missionSetup(G, m, officers) {
     const lead = i === 0 && (K.goal === 'leader' || K.champion), lv = Math.max(1, m.lv + (lead ? (K.champion ? 6 : 2) : Math.floor(r() * 3) - 1));
     const o = { id: -1 - i, name: K.names[i], lead: 50 + Math.round(r() * 25) + (lead ? 15 : 0), war: 50 + Math.round(r() * 25) + (lead ? 20 : 0), int: K.lines[i] === 'strat' || K.lines[i] === 'taoist' ? 70 + Math.round(r() * 20) : 35 + Math.round(r() * 25), pol: 30, cha: 40 + (lead ? 30 : 0), line: K.lines[i], lv, exp: 0, militia: true };
     o.eq = defaultGear(o, Math.min(5, 1 + Math.floor(lv / 10)));
+    if (K.int && !lead) o.int = K.int + Math.round(r() * 10);
+    if (K.legend && i === 0) { const L = LEGENDS[Math.floor(r() * LEGENDS.length)]; Object.assign(o, L.o, { name: L.name }); o.line = L.line; o.eq = defaultGear(o, 5); o.lv = lv + 4; const w = Object.values(RELICS).filter((x) => x.rarity === 5 && fits(o, x) && x.slot === 'w'); if (w.length) { o.eq.w = w[Math.floor(r() * w.length)].id; o.drop = o.eq.w; } }
     if (K.champion && i === 0) { o.lead = 92; o.war = 98; o.int = 55; o.cha = 85; const w = Object.values(RELICS).filter((x) => x.slot === 'w' && x.type === 'spear' && x.rarity === Math.min(5, m.stars)); if (w.length) { o.eq.w = w[Math.floor(r() * w.length)].id; o.drop = o.eq.w; } }
     foes.push({ o, troops: undefined, commander: lead, mode: lead ? 'hold' : r() < 0.25 ? 'hold' : 'attack' });
   }
-  const B = createBattle({ map, seed: m.seed, limit: 20, goal: K.goal === 'rout' ? 'rout' : 'leader',
+  const B = createBattle({ map, seed: m.seed, limit: K.limit || 20, goal: K.goal === 'leader' ? 'leader' : K.goal,
     atk: { fac: G.player, name: G.factions[G.player].name, color: G.factions[G.player].color, player: true, units: officers.slice(0, 6).map((o, i) => ({ o, troops: maxTroops(o), commander: i === 0 })) },
     def: { fac: null, name: K.name[0], color: '#6a6a5a', player: false, units: foes } });
+  // the centre layout: we hold the middle, they come from both edges
+  if (K.layout === 'center') {
+    const cx = Math.floor(map.w / 2), cy = Math.floor(map.h / 2), ok = (x, y) => { const t = map.tiles[y * map.w + x]; return t && ['plain', 'grass', 'road', 'desert', 'snow', 'village', 'forest', 'hill'].includes(t.t); };
+    for (let y = cy - 2; y <= cy + 2; y++) for (let x = cx - 3; x <= cx + 3; x++) if (!ok(x, y)) map.tiles[y * map.w + x].t = 'plain';
+    map.tiles[cy * map.w + cx].t = 'village';
+    const mine = B.units.filter((u) => u.side === 'atk'), ring = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1], [2, 0], [-2, 0]];
+    mine.forEach((u, i) => { u.x = cx + ring[i + 1][0]; u.y = cy + ring[i + 1][1]; });
+    B.units.filter((u) => u.side === 'def').forEach((u, i) => { const left = i % 2 === 0; u.x = left ? 1 : map.w - 2; u.y = Math.max(1, Math.min(map.h - 2, cy - 3 + Math.floor(i / 2) * 2)); u.dir = left ? 1 : -1; u.mode = 'attack'; });
+    for (const u of B.units.filter((x) => x.side === 'def')) { let k = 0; while (B.units.some((o) => o !== u && o.x === u.x && o.y === u.y) && k++ < 10) u.y = (u.y + 1) % map.h; const t = map.tiles[u.y * map.w + u.x]; if (!['plain', 'grass', 'road', 'desert', 'snow'].includes(t.t)) t.t = 'plain'; }
+    // the wagon to protect sits on the village
+    if (K.vip) {
+      const o = { id: -90, name: '糧車', lead: 60, war: 20, int: 20, pol: 0, cha: 50, line: 'siege', lv: Math.max(1, m.lv), exp: 0, eq: {}, militia: true };
+      const s = battleStats(o); s.mov = 0; s.hp = Math.round(s.hp * 1.4);
+      B.units.push({ id: B.uid++, o, side: 'atk', x: cx, y: cy, s, hp: s.hp, mp: 0, st: {}, buf: {}, moved: false, acted: false, done: false, commander: false, ai: true, mode: 'tower', structure: true, vip: true, dir: 1, start: s.hp, kills: 0 });
+    }
+    // reinforcements from the edges
+    B.waves = (K.waves || []).map((turn, wi) => ({ turn, side: 'def', units: Array.from({ length: 2 + Math.floor(m.stars / 2) }, (_, j) => {
+      const line = K.lines[(wi * 3 + j) % K.lines.length], lv = Math.max(1, m.lv + Math.floor(r() * 3) - 1);
+      const o = { id: -40 - wi * 10 - j, name: K.names[(wi * 3 + j) % K.names.length], lead: 50 + Math.round(r() * 25), war: 50 + Math.round(r() * 25), int: 35 + Math.round(r() * 25), pol: 30, cha: 40, line, lv, exp: 0, militia: true };
+      o.eq = defaultGear(o, Math.min(5, 1 + Math.floor(lv / 10)));
+      return { o, x: j % 2 ? map.w - 2 : 1, y: Math.max(1, Math.min(map.h - 2, cy - 2 + j * 2)) };
+    }) }));
+  }
   // chests across the field
-  const want = (K.chests || 0) + 1 + Math.floor(m.stars / 2);
+  const want = K.hidden ? 0 : (K.chests || 0) + 1 + Math.floor(m.stars / 2);
   const spots = map.tiles.map((t, i) => [i % map.w, Math.floor(i / map.w), t.t]).filter(([x, y, t]) => x > 4 && !['river', 'mount', 'wall', 'moat'].includes(t) && !B.units.some((u) => u.x === x && u.y === y));
   for (let i = 0; i < want && spots.length; i++) { const [x, y] = spots.splice(Math.floor(r() * spots.length), 1)[0]; map.chests.push({ x, y, item: r() < 0.55 ? rollRelic(r, Math.max(1, Math.min(5, m.rarity - (r() < 0.6 ? 1 : 0)))) : Object.keys(USABLES)[Math.floor(r() * 5)] }); }
   B.mission = m;
@@ -483,7 +516,11 @@ export function missionSetup(G, m, officers) {
 export function settleMission(G, B, m) {
   const won = B.over === 'atk', out = { won, gold: 0, items: [], loot: [] };
   for (const id of B.loot || []) { G.bag[id] = (G.bag[id] || 0) + 1; out.loot.push(id); }
-  if (won) {
+  // everyone who went learns something; more for a win and a harder mission
+  out.bonus = Math.round((won ? 12 : 5) * m.stars * (m.kind === 'drill' ? 2 : 1));
+  out.ups = [];
+  for (const u of B.units) if (u.o && !u.o.militia && u.side === 'atk') { const before = u.o.lv; gainExp(u.o, out.bonus); if (u.o.lv > before) out.ups.push(u.o); }
+  if (won && m.kind !== 'drill') {
     const c = G.cities[m.city]; out.gold = m.gold; c.gold += m.gold;
     const id = rollRelic(dice(G, 4242), m.rarity); G.bag[id] = (G.bag[id] || 0) + 1; out.items.push(id);
     const champ = B.units.find((u) => u.o.drop); if (champ) { G.bag[champ.o.drop] = (G.bag[champ.o.drop] || 0) + 1; out.items.push(champ.o.drop); }
@@ -493,4 +530,19 @@ export function settleMission(G, B, m) {
   G.missions = G.missions.filter((x) => x.id !== m.id);
   return out;
 }
+// the legendary generals of earlier ages, who appear in 傳說之將
+export const LEGENDS = [
+  { name: '西楚霸王 項羽', line: 'cav', o: { lead: 98, war: 100, int: 60, cha: 92 } },
+  { name: '兵仙 韓信', line: 'strat', o: { lead: 100, war: 72, int: 98, cha: 80 } },
+  { name: '殺神 白起', line: 'inf', o: { lead: 99, war: 90, int: 88, cha: 70 } },
+  { name: '飛將軍 李廣', line: 'arch', o: { lead: 90, war: 96, int: 70, cha: 88 } },
+  { name: '冠軍侯 霍去病', line: 'cav', o: { lead: 96, war: 95, int: 82, cha: 90 } },
+  { name: '兵聖 孫武', line: 'strat', o: { lead: 100, war: 60, int: 100, cha: 85 } },
+];
+// the training ground: always open, at the level you choose
+export function drillMission(G, cityId, lv) {
+  const r = dice(G, 313), K = MISSION_KINDS.drill;
+  return { id: 'drill-' + G.t + '-' + Math.floor(r() * 1e6), kind: 'drill', city: cityId, stars: Math.max(1, Math.min(5, Math.round(lv / 8))), lv, foes: 6, gold: 0, rarity: 1, theme: K.themes[Math.floor(r() * K.themes.length)], seed: Math.floor(r() * 1e9) };
+}
+export const avgLevel = (G) => { const offs = officersOf(G, G.player).sort((a, b) => b.lv - a.lv).slice(0, 6); return offs.length ? Math.round(offs.reduce((s2, o) => s2 + o.lv, 0) / offs.length) : 5; };
 export { quality, rng, themeFor, LINES };

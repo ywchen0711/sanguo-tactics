@@ -40,6 +40,9 @@ export async function runBattle(B, opts = {}) {
   const goalText = () => {
     const mine = B.sides[me];
     const chests = B.map.chests ? B.map.chests.filter((c) => !c.taken && !c.hidden).length : 0;
+    const vip = B.units.find((u) => u.vip);
+    const left = B.limit - B.turn + 1;
+    if (B.goal === 'survive') { clear(hud.goal).append(el('b', {}, T(`第 ${B.turn}/${B.limit} 回合`, `Turn ${B.turn}/${B.limit}`)), el('span', { class: 'dim small' }, '　' + (vip ? T(`勝利：保護糧車撐過 ${B.limit} 回合（還剩 ${left}）　敗北：糧車被毀或主將撤退`, `Win: keep the wagon alive for ${B.limit} turns (${left} to go) · Lose: the wagon or your commander falls`) : T(`勝利：守住 ${B.limit} 回合（還剩 ${left}）或全滅敵軍　敗北：主將撤退`, `Win: hold for ${B.limit} turns (${left} to go) or rout them · Lose: your commander falls`)))); return; }
     const g = B.goal === 'rout' ? T(`勝利：全滅敵軍　敗北：主將撤退或超過 ${B.limit} 回合${chests ? `　寶箱 ${chests}` : ''}`, `Win: rout them all · Lose: your commander falls or ${B.limit} turns pass${chests ? ` · chests ${chests}` : ''}`)
       : B.goal === 'leader' ? T(`勝利：擊敗敵將　敗北：主將撤退或超過 ${B.limit} 回合${chests ? `　寶箱 ${chests}` : ''}`, `Win: defeat their leader · Lose: your commander falls or ${B.limit} turns pass${chests ? ` · chests ${chests}` : ''}`)
       : me === 'atk' ? T(`勝利：擊敗敵軍主將、全滅敵軍或佔領城池　敗北：主將撤退或超過 ${B.limit} 回合`, `Win: defeat their commander, rout them, or take the keep · Lose: your commander falls, or ${B.limit} turns pass`)
@@ -225,6 +228,7 @@ export async function runBattle(B, opts = {}) {
     if (t === 'heal') { view.text(e.u.x, e.u.y, `+${e.n}`, '#8aff9a'); await W(160); return; }
     if (t === 'dmg') { view.text(e.u.x, e.u.y, `-${e.n}`, '#c08aff'); await W(160); return; }
     if (t === 'cured') return;
+    if (t === 'spawn') { const u0 = e.units[0]; if (u0) view.ensure(u0.x, u0.y); for (const u of e.units) { u.ax = u.x; u.ay = u.y; u.alpha = 1; u.flash = 0.5; } sfx('turn'); await banner(e.side === me ? T('我軍援兵到達！', 'Our reinforcements arrive!') : T('敵軍援兵出現！', 'Enemy reinforcements!'), 1000); return; }
     if (t === 'trap') { view.ensure(e.u.x, e.u.y); e.u.flash = 0.4; sfx('hurt'); view.effect('rock', e.u.x, e.u.y, 0.6); view.text(e.u.x, e.u.y - 0.3, T('陷坑！', 'Pit trap!'), '#ffb070', true); view.text(e.u.x, e.u.y, `-${e.n}`, '#ffffff'); await W(700); return; }
     if (t === 'chest') { const it = USABLES[e.item] || itemDef(e.item), col = it.rarity ? RARITY[it.rarity].col : '#ffe070'; sfx('treasure'); view.effect('buff', e.u.x, e.u.y, 0.8); view.text(e.u.x, e.u.y - 0.3, e.hidden ? T('發現隱藏的物資！', 'A hidden cache!') : T('打開寶箱！', 'Chest!'), '#ffe070', true, 1.4); toast(T(`獲得「${it.name[0]}」${it.rarity ? `（${RARITY[it.rarity].name[0]}）` : ''}`, `Found ${it.name[1]}${it.rarity ? ` (${RARITY[it.rarity].name[1]})` : ''}`), 2200); void col; goalText(); await W(800); return; }
     if (t === 'lvup') { view.text(e.u.x, e.u.y - 0.4, 'LEVEL UP', '#ffe070', true, 1.4); sfx('levelup'); if (e.promoted) await banner(T(`${nm(e.u.o.name)} 晉升為 ${e.promoted[0]}！`, `${nm(e.u.o.name)} is promoted to ${e.promoted[1]}!`), 1300); else await W(400); return; }

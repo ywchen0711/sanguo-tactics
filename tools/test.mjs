@@ -89,7 +89,13 @@ for (const sc of SCENARIOS) {
     try { const B = C.missionSetup(G, m, offs); B.sides.atk.player = false; for (const u of B.units) u.ai = true; C.autoBattle(B); B.sides.atk.player = true; const r = C.settleMission(G, B, m); if (r.won) wins++; items += r.items.length + r.loot.length; if (!B.over) bad++; }
     catch (e) { bad++; console.log(e.stack); }
   }
-  ok('training missions run and reward', bad === 0 && items > 0, `${wins}/18 won by the AI · ${items} items · ${bad} problems`);
+  const n = Object.keys(C.MISSION_KINDS).length * 3;
+  ok('training missions run and reward', bad === 0 && items > 0, `${Object.keys(C.MISSION_KINDS).length} kinds · ${wins}/${n} won by the AI · ${items} items · ${bad} problems`);
+  // the goals behave: survival ends in victory at the time limit, the wagon's fall is a defeat
+  { const G = C.newGame({ scenario: '190', player: 'cao', seed: 5 }); const m = { ...G.missions[0], kind: 'escort', id: 'e', stars: 3, foes: 5, rarity: 2, theme: 'plains', seed: 9 }; G.missions.push(m);
+    const B = C.missionSetup(G, m, C.officersIn(G, G.cities[m.city]).slice(0, 4)); const vip = B.units.find((u) => u.vip); B.sides.atk.player = false; for (const u of B.units) u.ai = true; C.autoBattle(B);
+    const spawned = B.events.filter((e) => e.t === 'spawn').length;
+    ok('escort: waves arrive and the goal decides', !!vip && spawned >= 1 && ['time', 'vip', 'rout', 'commander'].includes(B.why), `${B.over} by ${B.why} on turn ${B.turn} · ${spawned} waves · wagon ${vip.hp}/${vip.s.hp}`); }
 }
 // treasures: every one fits somebody, powers apply
 {

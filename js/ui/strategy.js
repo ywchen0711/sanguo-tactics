@@ -125,31 +125,47 @@ export async function runCampaign(G, { save, quit }) {
     const [ok, msg] = C.build(G, o, keys[r]); sfx(ok ? 'ok' : 'hurt'); toast(T(...msg), 2200); drawSide(); save();
   }
   // ------------------------------------------------ training missions
+  const idleAll = () => C.officersOf(G, G.player).filter((o) => !o.done).length;
+  const goalTag = (K) => (K.vip ? T(`護送 ${K.limit} 回合`, `Escort ${K.limit} turns`) : K.goal === 'survive' ? T(`堅守 ${K.limit} 回合`, `Hold ${K.limit} turns`) : K.goal === 'leader' ? T('擊敗首領', 'Defeat the leader') : T('全滅敵軍', 'Rout them'));
   function missionBoard() {
-    const box = el('div', {}, el('div', { class: 'title' }, T('鍛鍊任務', 'Training missions')), el('div', { class: 'small dim' }, T('派最多 6 名武將出戰（不消耗城內兵力）。完成任務獲得經驗、金錢與寶物；地圖上的寶箱走上去就能打開。任務每月更新。', 'Send up to 6 officers (no city troops are used). Win for experience, gold and treasure; walk onto a chest to open it. New missions every month.')),
-      el('div', { class: 'list', style: { marginTop: '8px' } }, G.missions.length ? G.missions.map((m) => { const K = C.MISSION_KINDS[m.kind], c = G.cities[m.city], idle = C.officersIn(G, c).filter((o) => !o.done).length;
-        return el('div', { class: 'item mission' }, el('div', { class: 'grow' }, el('div', {}, el('b', {}, T(K.name)), el('span', { class: 'stars' }, ' ' + '★'.repeat(m.stars) + '☆'.repeat(5 - m.stars))),
+    const avg = C.avgLevel(G), idle = idleAll();
+    const box = el('div', {}, el('div', { class: 'title' }, T('鍛鍊任務', 'Training missions')), el('div', { class: 'small dim' }, T('派最多 6 名武將出戰（可以從任何一座我方城市派出，不消耗城內兵力）。完成任務獲得經驗、金錢與寶物，參加的武將都會得到額外經驗；地圖上的寶箱走上去就能打開。任務每月更新。', 'Send up to 6 officers from any of your cities (no city troops are used). Win for experience, gold and treasure — everyone who goes earns bonus experience; walk onto a chest to open it. New missions every month.')),
+      // the training ground: always open
+      el('div', { class: 'item drill' }, el('div', { class: 'grow' }, el('b', {}, T('演武場', 'Training Ground')), el('div', { class: 'small dim' }, T(C.MISSION_KINDS.drill.desc)), el('div', { class: 'small' }, T(`隨時可以出戰，次數不限（每位武將每月一次）。目前主力平均 Lv${avg}`, `Open any time, as often as you like (each officer once a month). Your best average Lv${avg}`))),
+        el('div', { class: 'row' }, [[-3, T('輕鬆', 'Easy')], [0, T('普通', 'Even')], [5, T('困難', 'Hard')], [7, T('地獄', 'Brutal')]].map(([d, label]) => el('button', { class: 'btn', disabled: !idle || null, onclick: () => { close(); goMission(C.drillMission(G, G.factions[G.player].capital, Math.max(1, avg + d))); } }, `${label} Lv${Math.max(1, avg + d)}`)))),
+      el('div', { class: 'list', style: { marginTop: '8px' } }, G.missions.length ? G.missions.map((m) => { const K = C.MISSION_KINDS[m.kind], c = G.cities[m.city];
+        return el('div', { class: 'item mission' + (K.legend ? ' legend' : '') }, el('div', { class: 'grow' }, el('div', {}, el('b', {}, T(K.name)), el('span', { class: 'stars' }, ' ' + '★'.repeat(m.stars) + '☆'.repeat(5 - m.stars)), el('span', { class: 'tag' }, goalTag(K))),
           el('div', { class: 'small dim' }, T(K.desc)),
           el('div', { class: 'small' }, `${T('地點', 'At')} ${cityName(c.name)} · ${T('建議', 'Suggested')} Lv${m.lv} · ${T('敵軍', 'Foes')} ${m.foes} · ${T(THEMES[m.theme].name)}`),
           el('div', { class: 'small', style: { color: RARITY[m.rarity].col } }, `${T('報酬', 'Reward')}：${T('金', 'gold')} ${m.gold} · ${T(RARITY[m.rarity].name)}${T('寶物', ' treasure')}${C.MISSION_KINDS[m.kind].champion ? T(' · 猛將的神兵', ' · the champion\'s weapon') : ''}`)),
-          el('button', { class: 'btn war', disabled: !idle || null, onclick: () => { close(); goMission(m); } }, idle ? T('出發', 'Go') : T('無人可派', 'No one free'))); }) : el('div', { class: 'dim' }, T('本月沒有任務了。', 'No missions left this month.'))),
+          el('button', { class: 'btn war', disabled: !idle || null, onclick: () => { close(); goMission(m); } }, idle ? T('出發', 'Go') : T('無人可派', 'No one free'))); }) : el('div', { class: 'dim' }, T('本月的任務都完成了，可以去演武場。', 'All of this month\u2019s missions are done — try the training ground.'))),
       el('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '8px' } }, el('button', { class: 'btn primary', onclick: () => close() }, T('關閉', 'Close'))));
     const close = sheet(box, { wide: true });
   }
   async function goMission(m) {
-    const c = G.cities[m.city], K = C.MISSION_KINDS[m.kind];
-    const picked = await deploy(c, `${T(K.name)} ${'★'.repeat(m.stars)}`, null, 6);
+    const K = C.MISSION_KINDS[m.kind];
+    // send them from any city with someone free (the mission's own city first)
+    const from = C.citiesOf(G, G.player).filter((x) => C.officersIn(G, x).some((o) => !o.done)).sort((a, b) => (b.id === m.city) - (a.id === m.city) || C.officersIn(G, b).length - C.officersIn(G, a).length);
+    if (!from.length) return toast(T('沒有可以派出的武將', 'No one is free'));
+    const j = from.length === 1 ? 0 : await choose(T('從哪座城派出武將？', 'Send officers from which city?'), from.map((x) => `${cityName(x.name)}（${T('可派', 'free')} ${C.officersIn(G, x).filter((o) => !o.done).length}）`));
+    if (j < 0) return;
+    const c = from[j];
+    const picked = await deploy(c, `${T(K.name)} ${K.hidden ? `Lv${m.lv}` : '★'.repeat(m.stars)}`, null, 6);
     if (!picked) return;
     busy = true; alive = false; removeEventListener('resize', onResize);
     const B = C.missionSetup(G, m, picked);
-    await modal(el('div', {}, el('div', { class: 'title', style: { fontSize: '22px' } }, T(K.name)), el('div', {}, T(K.desc)), el('div', { class: 'small dim', style: { marginTop: '6px' } }, T(`${THEMES[m.theme].name[0]} · 敵軍 ${m.foes} 隊 · 寶箱 ${B.map.chests.length} 個 · 20 回合內完成`, `${THEMES[m.theme].name[1]} · ${m.foes} enemy units · ${B.map.chests.length} chests · 20 turns`))), [T('出擊', 'Go')]);
+    const lead = B.units.find((u) => u.side === 'def' && u.commander);
+    await modal(el('div', {}, el('div', { class: 'title', style: { fontSize: '22px' } }, T(K.name)), el('div', {}, T(K.desc)),
+      K.legend && lead ? el('div', { style: { marginTop: '6px', color: 'var(--gold2)' } }, T(`敵將：${lead.o.name}（Lv${lead.o.lv}）`, `Foe: ${nm(lead.o.name)} (Lv${lead.o.lv})`)) : null,
+      el('div', { class: 'small dim', style: { marginTop: '6px' } }, T(`${THEMES[m.theme].name[0]} · 敵軍 ${m.foes} 隊${B.waves && B.waves.length ? ` · 援兵 ${B.waves.length} 波` : ''} · 寶箱 ${B.map.chests.length} 個 · ${goalTag(K)} · 限 ${B.limit} 回合`, `${THEMES[m.theme].name[1]} · ${m.foes} enemy units${B.waves && B.waves.length ? ` · ${B.waves.length} waves` : ''} · ${B.map.chests.length} chests · ${goalTag(K)} · ${B.limit} turns`))), [T('出擊', 'Go')]);
     await runBattle(B, { bag: G.bag });
     const res = C.settleMission(G, B, m);
     clear(); alive = true; busy = false; last = performance.now(); fitMap(); map.bg = null; addEventListener('resize', onResize); requestAnimationFrame(frame); ui.append(top, side, chron); music('world');
     const mine = B.units.filter((u) => u.side === 'atk');
     await modal(el('div', {}, el('div', { class: 'title', style: { fontSize: '24px', color: res.won ? 'var(--gold2)' : 'var(--red)' } }, res.won ? T('任務完成！', 'Mission complete!') : T('任務失敗……', 'Mission failed…')),
-      mine.map((u) => el('div', { class: 'small' }, nm(u.o.name), el('span', { class: 'dim' }, ` Lv${u.o.lv} · EXP +${B.exp[u.o.id] || 0}`))),
-      res.won ? el('div', { style: { marginTop: '6px' } }, T(`金 +${res.gold}`, `Gold +${res.gold}`)) : null,
+      mine.filter((u) => !u.o.militia).map((u) => el('div', { class: 'small' }, nm(u.o.name), el('span', { class: 'dim' }, ` Lv${u.o.lv} · EXP +${(B.exp[u.o.id] || 0) + res.bonus}`), res.ups.includes(u.o) ? el('span', { style: { color: 'var(--gold2)' } }, ' LEVEL UP!') : null)),
+      el('div', { class: 'small dim' }, T(`（含任務獎勵經驗 +${res.bonus}）`, `(including a mission bonus of +${res.bonus})`)),
+      res.won && res.gold ? el('div', { style: { marginTop: '6px' } }, T(`金 +${res.gold}`, `Gold +${res.gold}`)) : null,
       [...res.items, ...res.loot].length ? el('div', { style: { marginTop: '6px' } }, el('div', { class: 'title small' }, T('獲得', 'Obtained')), [...res.items, ...res.loot].map((id) => itemLine(id))) : null,
       !res.won ? el('div', { class: 'small dim' }, T('（武將們獲得的經驗與寶箱仍然保留）', '(experience and opened chests are kept)')) : null), [T('確定', 'OK')], { wide: true });
     save(); drawSide();

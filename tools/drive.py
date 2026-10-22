@@ -30,6 +30,20 @@ try {
         const G = window.__sg.G;
         if (stage === 4) report(`campaign ${G.year}/${G.month} cities=${G.cities.filter((c) => c.owner === G.player).length}`);
         else if (stage === 10) { document.querySelector('.citypanel .item').click(); await wait(400); report('officer sheet'); }
+        else if (stage === 18) { G.missions[5].kind = 'legend'; G.missions[5].stars = 5; click('任務'); await wait(500); report(`board missions=${document.querySelectorAll('.modal .item.mission').length} drill=${document.querySelectorAll('.modal .item.drill .btn').length}`); }
+        else if (stage === 16 || stage === 17) {
+          // the training ground (16) or an escort mission forced onto the board (17)
+          if (stage === 17) { const m = G.missions[0]; m.kind = 'escort'; m.stars = 3; m.foes = 5; m.theme = 'plains'; }
+          click('任務'); await wait(400);
+          if (stage === 16) [...document.querySelectorAll('.modal .item.drill .btn')][1].click(); else document.querySelector('.modal .btn.war').click();
+          await wait(500); const m2 = document.querySelector('.modal'); if (m2 && !document.querySelector('.modal .check')) { m2.querySelector('.btn').click(); await wait(400); }
+          click('出發！'); await wait(500); click('出擊'); await wait(2000);
+          const B = window.__B;
+          click('委任'); await wait(+(q.get('ms') || 30000));
+          const goal = document.querySelector('.goal') ? document.querySelector('.goal').textContent : '';
+          for (let i = 0; i < 6 && document.querySelector('.modal'); i++) { const b = document.querySelector('.modal .btn.primary') || document.querySelector('.modal .btn'); b.click(); await wait(600); }
+          report(`${stage === 16 ? 'drill' : 'escort'} goal=${B.goal} over=${B.over} why=${B.why} turn=${B.turn} spawns=${B.events.filter((e) => e.t === 'spawn').length} vip=${B.units.some((u) => u.vip)}`);
+        }
         else if (stage === 14 || stage === 15) {
           click('任務'); await wait(400);
           const goB = [...document.querySelectorAll('.modal .btn.war')].find((b) => !b.disabled); goB.click(); await wait(500);

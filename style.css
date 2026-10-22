@@ -76,6 +76,12 @@ tr.off td { opacity: 0.6; }
 .cmds .btn { padding: 6px 4px; }
 .chron { position: absolute; left: 12px; bottom: 12px; max-width: min(520px, calc(100% - 380px)); line-height: 1.6; opacity: 0.92; }
 
+/* missions */
+.stars { color: #ffc840; letter-spacing: 1px; }
+.item.legend { border-color: #ffc840; background: linear-gradient(90deg, rgba(255, 200, 64, 0.16), rgba(255, 255, 255, 0.03)); }
+.item.drill { margin-top: 8px; border-color: var(--line); background: rgba(138, 186, 255, 0.08); flex-wrap: wrap; }
+.item.drill .row .btn { padding: 4px 10px; font-size: 13px; }
+
 /* the battle */
 .bhud-top { position: absolute; left: 12px; top: 10px; display: flex; gap: 6px; flex-wrap: wrap; max-width: 46%; }
 .bhud-top .btn { padding: 5px 10px; }

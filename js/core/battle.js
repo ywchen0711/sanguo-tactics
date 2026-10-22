@@ -52,6 +52,16 @@ export function addTower(B, side, x, y, lv) {
 export function startPhase(B, side) {
   B.side = side;
   ev(B, { t: 'phase', side, turn: B.turn });
+  // reinforcements: waves that join on a given turn, at the edge they come from
+  for (const w of B.waves || []) if (!w.done && w.side === side && w.turn === B.turn) {
+    w.done = true; const added = [];
+    for (const m of w.units) {
+      const s = battleStats(m.o), spot = freeNear(B, m.x, m.y, { s }) || [m.x, m.y];
+      const u = { id: B.uid++, o: m.o, side, x: spot[0], y: spot[1], s, hp: s.hp, mp: s.mp, st: {}, buf: {}, moved: false, acted: false, done: false, commander: false, ai: true, mode: 'attack', dir: spot[0] < B.map.w / 2 ? 1 : -1, start: s.hp, kills: 0 };
+      B.units.push(u); added.push(u);
+    }
+    ev(B, { t: 'spawn', side, units: added });
+  }
   for (const u of B.units) {
     if (!alive(u) || u.side !== side) continue;
     u.moved = false; u.acted = false; u.done = false; u.from = null;
@@ -71,7 +81,7 @@ export function endPhase(B) {
   if (B.over) return;
   for (const u of B.units) if (alive(u) && u.side === B.side) u.done = true;
   if (B.side === 'atk') startPhase(B, 'def');
-  else { B.turn++; if (B.turn > B.limit) return finish(B, 'def', 'time'); startPhase(B, 'atk'); }
+  else { B.turn++; if (B.turn > B.limit) return finish(B, B.goal === 'survive' ? 'atk' : 'def', 'time'); startPhase(B, 'atk'); }
   checkEnd(B);
 }
 export function finish(B, winner, why) { if (B.over) return; B.over = winner; B.why = why; ev(B, { t: 'end', winner, why }); }
@@ -79,9 +89,10 @@ export function checkEnd(B) {
   if (B.over) return B.over;
   const A = B.units.filter((u) => alive(u) && u.side === 'atk' && !u.structure), D = B.units.filter((u) => alive(u) && u.side === 'def' && !u.structure);
   if (!A.length) return finish(B, 'def', 'rout');
+  if (B.units.some((u) => u.vip && u.gone)) return finish(B, 'def', 'vip');
   if (!D.length) return finish(B, 'atk', 'rout');
   if (!A.some((u) => u.commander)) return finish(B, 'def', 'commander');
-  if (B.goal !== 'rout' && !D.some((u) => u.commander)) return finish(B, 'atk', 'commander');
+  if (B.goal !== 'rout' && B.goal !== 'survive' && !D.some((u) => u.commander)) return finish(B, 'atk', 'commander');
   if (B.map.siege && A.some((u) => u.x === B.map.keep[0] && u.y === B.map.keep[1])) return finish(B, 'atk', 'keep');
   return null;
 }

@@ -103,6 +103,7 @@ export class Field {
     this.g.drawImage(objectSprite(kind, variant, col), Math.floor(sx), Math.floor(sy - ts * 0.5 + bob * ts), Math.ceil(ts), Math.ceil(ts * 1.5));
   }
   drawUnit(u, dt) {
+    if (u.ax == null) { u.ax = u.x; u.ay = u.y; u.alpha = 1; u.flash = 0; }
     const g = this.g, ts = this.ts, [sx, sy] = this.scr(u.ax, u.ay), B = this.B;
     if (u.gone) u.alpha = Math.max(0, u.alpha - dt * 1.5);
     g.globalAlpha = u.alpha;
