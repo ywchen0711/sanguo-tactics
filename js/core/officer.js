@@ -2,6 +2,7 @@
 // those add up to. Shared by the campaign and the battle rules.
 import { LINES, GRADE, tierOf, MAX_LV, LEARN, SIGNATURE, STRATS, GEAR } from '../data/rules.js';
 import { ITEMS as TREASURE_RAW } from '../data/treasures.js';
+import { RELICS } from '../data/relics.js';
 
 // famous items (寶物): a weapon (w) fights as a top-tier weapon; horses, books and treasures sit in the accessory slot
 export const TREASURES = {};
@@ -10,7 +11,7 @@ for (const [key, zh, en, slot, bonus] of TREASURE_RAW) {
   if (slot === 'w') t.atk = 30; else if (slot === 'h') { t.mov = 1; t.only = 'horse'; t.agi = 6; } else if (slot === 'b') { t.spi = 10; t.mp = 12; } else t.mor = 8;
   TREASURES[t.id] = t;
 }
-export const itemDef = (id) => GEAR[id] || TREASURES[id] || null;
+export const itemDef = (id) => GEAR[id] || TREASURES[id] || RELICS[id] || null;
 
 // which kind of soldiers a general leads, from what history says they were good at
 const BY_NAME = {
@@ -60,12 +61,19 @@ export function battleStats(o) {
     agi: grow(a.war * 0.4 + a.lead * 0.3 + a.int * 0.3 + 6, lv, g[3]), mor: grow(a.cha * 0.4 + a.lead * 0.4 + 8, lv, g[4]),
     hp: (L.hp[0] + (lv - 1) * L.hp[1]) * (0.75 + a.lead / 300) * (1 + t * 0.08), mp: (L.mp[0] + (lv - 1) * L.mp[1]) * (0.5 + a.int / 100), res: 0,
   };
+  const fx = {};
   for (const [slot, id] of Object.entries(o.eq || {})) {
     const it = id && itemDef(id); if (!it) continue;
     if (it.only && it.only !== L.move && !(it.only === 'foot' && L.move !== 'horse')) continue;
     for (const k of ['atk', 'def', 'spi', 'agi', 'mor', 'mov', 'mp', 'res']) if (it[k]) s[k] += it[k];
     if (slot === 'w' && it.famous) s.atk += t * 4;
+    for (const [k, v] of Object.entries(it.fx || {})) fx[k] = (fx[k] || 0) + v;
   }
+  // treasures' powers (core/battle.js reads them)
+  s.fx = fx;
+  if (fx.hpPct) s.hp *= 1 + fx.hpPct / 100;
+  if (fx.range && s.r[1] >= 2) s.r = [s.r[0], s.r[1] + 1];
+  if (fx.res) s.res += fx.res;
   for (const k of ['atk', 'def', 'spi', 'agi', 'mor']) s[k] = Math.round(s[k]);
   s.hp = Math.round(s.hp / 10) * 10; s.mp = Math.round(s.mp);
   // a commander of many years is hard to rattle

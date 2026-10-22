@@ -30,6 +30,14 @@ try {
         const G = window.__sg.G;
         if (stage === 4) report(`campaign ${G.year}/${G.month} cities=${G.cities.filter((c) => c.owner === G.player).length}`);
         else if (stage === 10) { document.querySelector('.citypanel .item').click(); await wait(400); report('officer sheet'); }
+        else if (stage === 14 || stage === 15) {
+          click('任務'); await wait(400);
+          const goB = [...document.querySelectorAll('.modal .btn.war')].find((b) => !b.disabled); goB.click(); await wait(500);
+          click('出發！'); await wait(500); click('出擊'); await wait(2000);
+          const B = window.__B;
+          if (stage === 14) report(`mission units=${B.units.length} chests=${B.map.chests.length} goal=${B.goal}`);
+          else { click('委任'); await wait(+(q.get('ms') || 50000)); for (let i = 0; i < 6 && document.querySelector('.modal'); i++) { const b = document.querySelector('.modal .btn.primary') || document.querySelector('.modal .btn'); b.click(); await wait(600); } report(`mission over=${B.over} turn=${B.turn} loot=${B.loot.length} bag=${Object.keys(G.bag).length}`); }
+        }
         else if (stage === 13) {
           // Dong Zhuo marches from Luoyang on Chenliu; we command the defence, then hand it to auto-battle
           const from = G.cities.find((c) => c.name === '洛陽'), to = G.cities.find((c) => c.name === '陳留');
@@ -50,7 +58,7 @@ try {
           else {
             click('出陣'); await wait(400); click('開戰'); await wait(1800);
             const B = window.__B;
-            if (stage === 6) report(`battle units=${B.units.length} side=${B.side} theme=${B.map.theme}`);
+            if (stage === 6) { if (q.get('zoom')) { const v = window.__view, u = B.units.find((x) => x.side === 'atk'); v.zoomBy(+q.get('zoom')); v.centerOn(u.x + 3, u.y, false); await wait(300); } report(`battle units=${B.units.length} side=${B.side} theme=${B.map.theme}`); }
             else if (stage === 7 || stage === 8 || stage === 11) {
               const v = window.__view, cv = document.getElementById('view'), r = cv.getBoundingClientRect();
               const tap = (x, y) => { const px = r.left + ((x + 0.5) * v.ts - v.camX) / v.dpr, py = r.top + ((y + 0.5) * v.ts - v.camY) / v.dpr; cv.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: px, clientY: py })); };

@@ -10,6 +10,7 @@ import { LINES, STRATS, USABLES, GEAR, LEARN, tierOf } from '../data/rules.js';
 import { battleStats, itemDef, fits, TREASURES } from '../core/officer.js';
 import * as C from '../core/campaign.js';
 import { THEMES } from '../core/mapgen.js';
+import { RELICS, RARITY, fxText } from '../data/relics.js';
 import { music, sfx } from '../audio.js';
 
 const ATTR = [['lead', '統率', 'LEAD'], ['war', '武力', 'WAR'], ['int', '智力', 'INT'], ['pol', '政治', 'POL'], ['cha', '魅力', 'CHA']];
@@ -45,6 +46,7 @@ export async function runCampaign(G, { save, quit }) {
       el('b', { class: 'date' }, T(`${G.year}年 ${G.month}月`, `${['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][G.month]} ${G.year}`)),
       el('span', { class: 'small' }, `${T('城', 'Cities')} ${mine.length}/${G.cities.length} · ${T('武將', 'Officers')} ${offs.length} · ${T('金', 'Gold')} ${gold} · ${T('兵', 'Troops')} ${troops}`),
       el('span', { class: 'grow' }),
+      el('button', { class: 'btn mission', onclick: () => missionBoard() }, T(`任務 ${G.missions.length}`, `Missions ${G.missions.length}`)),
       el('button', { class: 'btn', onclick: () => officerList() }, T('武將', 'Officers')),
       el('button', { class: 'btn', onclick: () => bagSheet() }, T('道具', 'Items')),
       el('button', { class: 'btn', onclick: () => chronicle() }, T('記錄', 'Chronicle')),
@@ -65,6 +67,7 @@ export async function runCampaign(G, { save, quit }) {
       el('div', { class: 'cgrid' },
         stat(T('金', 'Gold'), c.gold), stat(T('糧', 'Food'), c.food), stat(T('兵', 'Troops'), c.troops, C.capOf(c)),
         stat(T('農業', 'Farming'), c.farm, c.farmMax), stat(T('商業', 'Commerce'), c.trade, c.tradeMax), stat(T('城防', 'Walls'), c.wall, c.wallMax)),
+      el('div', { class: 'defrow small' }, el('span', { class: 'dim' }, T('防守設施', 'Defences')), ...Object.entries(C.FACILITIES).map(([k, F]) => el('span', { class: 'tag', title: T(F.desc) }, `${T(F.name)} ${k === 'moat' ? (c.fac.moat ? '✓' : '—') : k === 'trap' && !mine ? '?' : c.fac[k] || 0}`))),
     );
     // officers here
     side.append(el('div', { class: 'title small sect' }, T(`武將（${offs.length}）`, `Officers (${offs.length})`)));
@@ -108,9 +111,48 @@ export async function runCampaign(G, { save, quit }) {
     });
   }
   async function order(c, k) {
+    if (k === 'build') return buildOrder(c);
     const by = { farm: (o) => o.pol, trade: (o) => o.pol, wall: (o) => o.lead, draft: (o) => o.lead + o.cha, train: (o) => -o.lv, search: (o) => o.int }[k];
     const o = await pickOfficer(c, by, `${T(C.COMMANDS[k].name)}：${T(C.COMMANDS[k].desc)}`); if (!o) return;
     const [ok, msg] = C.doCommand(G, o, k); sfx(ok ? 'ok' : 'hurt'); toast(`${nm(o.name)}：${T(...msg)}`, 2200); drawSide(); save();
+  }
+  async function buildOrder(c) {
+    const keys = Object.keys(C.FACILITIES);
+    const labels = keys.map((k) => { const F = C.FACILITIES[k]; return `${T(F.name)}　${C.facCount(c, k)}/${F.max(c)}　${T('金', 'gold')} ${F.cost}`; });
+    const r = await modal(el('div', {}, el('div', { class: 'title' }, T('修建防守設施', 'Build defences')), el('div', { class: 'small dim' }, T(`城內金錢 ${c.gold}`, `City gold ${c.gold}`)), keys.map((k) => el('div', { class: 'small', style: { marginTop: '4px' } }, el('b', {}, T(C.FACILITIES[k].name)), '：', T(C.FACILITIES[k].desc)))), [...labels, T('取消', 'Cancel')]);
+    if (r < 0 || r >= keys.length) return;
+    const o = await pickOfficer(c, (x) => x.lead, T(`派誰去修建${T(C.FACILITIES[keys[r]].name)}？`, `Who will build the ${C.FACILITIES[keys[r]].name[1]}?`)); if (!o) return;
+    const [ok, msg] = C.build(G, o, keys[r]); sfx(ok ? 'ok' : 'hurt'); toast(T(...msg), 2200); drawSide(); save();
+  }
+  // ------------------------------------------------ training missions
+  function missionBoard() {
+    const box = el('div', {}, el('div', { class: 'title' }, T('鍛鍊任務', 'Training missions')), el('div', { class: 'small dim' }, T('派最多 6 名武將出戰（不消耗城內兵力）。完成任務獲得經驗、金錢與寶物；地圖上的寶箱走上去就能打開。任務每月更新。', 'Send up to 6 officers (no city troops are used). Win for experience, gold and treasure; walk onto a chest to open it. New missions every month.')),
+      el('div', { class: 'list', style: { marginTop: '8px' } }, G.missions.length ? G.missions.map((m) => { const K = C.MISSION_KINDS[m.kind], c = G.cities[m.city], idle = C.officersIn(G, c).filter((o) => !o.done).length;
+        return el('div', { class: 'item mission' }, el('div', { class: 'grow' }, el('div', {}, el('b', {}, T(K.name)), el('span', { class: 'stars' }, ' ' + '★'.repeat(m.stars) + '☆'.repeat(5 - m.stars))),
+          el('div', { class: 'small dim' }, T(K.desc)),
+          el('div', { class: 'small' }, `${T('地點', 'At')} ${cityName(c.name)} · ${T('建議', 'Suggested')} Lv${m.lv} · ${T('敵軍', 'Foes')} ${m.foes} · ${T(THEMES[m.theme].name)}`),
+          el('div', { class: 'small', style: { color: RARITY[m.rarity].col } }, `${T('報酬', 'Reward')}：${T('金', 'gold')} ${m.gold} · ${T(RARITY[m.rarity].name)}${T('寶物', ' treasure')}${C.MISSION_KINDS[m.kind].champion ? T(' · 猛將的神兵', ' · the champion\'s weapon') : ''}`)),
+          el('button', { class: 'btn war', disabled: !idle || null, onclick: () => { close(); goMission(m); } }, idle ? T('出發', 'Go') : T('無人可派', 'No one free'))); }) : el('div', { class: 'dim' }, T('本月沒有任務了。', 'No missions left this month.'))),
+      el('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '8px' } }, el('button', { class: 'btn primary', onclick: () => close() }, T('關閉', 'Close'))));
+    const close = sheet(box, { wide: true });
+  }
+  async function goMission(m) {
+    const c = G.cities[m.city], K = C.MISSION_KINDS[m.kind];
+    const picked = await deploy(c, `${T(K.name)} ${'★'.repeat(m.stars)}`, null, 6);
+    if (!picked) return;
+    busy = true; alive = false; removeEventListener('resize', onResize);
+    const B = C.missionSetup(G, m, picked);
+    await modal(el('div', {}, el('div', { class: 'title', style: { fontSize: '22px' } }, T(K.name)), el('div', {}, T(K.desc)), el('div', { class: 'small dim', style: { marginTop: '6px' } }, T(`${THEMES[m.theme].name[0]} · 敵軍 ${m.foes} 隊 · 寶箱 ${B.map.chests.length} 個 · 20 回合內完成`, `${THEMES[m.theme].name[1]} · ${m.foes} enemy units · ${B.map.chests.length} chests · 20 turns`))), [T('出擊', 'Go')]);
+    await runBattle(B, { bag: G.bag });
+    const res = C.settleMission(G, B, m);
+    clear(); alive = true; busy = false; last = performance.now(); fitMap(); map.bg = null; addEventListener('resize', onResize); requestAnimationFrame(frame); ui.append(top, side, chron); music('world');
+    const mine = B.units.filter((u) => u.side === 'atk');
+    await modal(el('div', {}, el('div', { class: 'title', style: { fontSize: '24px', color: res.won ? 'var(--gold2)' : 'var(--red)' } }, res.won ? T('任務完成！', 'Mission complete!') : T('任務失敗……', 'Mission failed…')),
+      mine.map((u) => el('div', { class: 'small' }, nm(u.o.name), el('span', { class: 'dim' }, ` Lv${u.o.lv} · EXP +${B.exp[u.o.id] || 0}`))),
+      res.won ? el('div', { style: { marginTop: '6px' } }, T(`金 +${res.gold}`, `Gold +${res.gold}`)) : null,
+      [...res.items, ...res.loot].length ? el('div', { style: { marginTop: '6px' } }, el('div', { class: 'title small' }, T('獲得', 'Obtained')), [...res.items, ...res.loot].map((id) => itemLine(id))) : null,
+      !res.won ? el('div', { class: 'small dim' }, T('（武將們獲得的經驗與寶箱仍然保留）', '(experience and opened chests are kept)')) : null), [T('確定', 'OK')], { wide: true });
+    save(); drawSide();
   }
   async function doRecruit(c, t) {
     const o = await pickOfficer(c, (x) => C.recruitChance(G, x, t), T(`派誰去登用 ${nm(t.name)}？`, `Who will recruit ${nm(t.name)}?`)); if (!o) return;
@@ -158,21 +200,22 @@ export async function runCampaign(G, { save, quit }) {
     await fight({ af: G.player, from: src.id, to: target.id, atkOfficers: picked });
   }
   // choose who marches (up to ten); shows the troops each would lead
-  function deploy(c, title, enemyCity) {
+  function deploy(c, title, enemyCity, cap = C.MAX_DEPLOY) {
+    const mission = cap < C.MAX_DEPLOY;
     return new Promise((resolve) => {
-      const offs = C.officersIn(G, c).filter((o) => !o.done || enemyCity == null).sort((a, b) => C.quality(b) - C.quality(a));
+      const offs = C.officersIn(G, c).filter((o) => !o.done || (enemyCity == null && !mission)).sort((a, b) => C.quality(b) - C.quality(a));
       if (!offs.length) { toast(T('沒有可以出陣的武將', 'No one free to march')); return resolve(null); }
-      const sel = new Set(offs.slice(0, Math.min(C.MAX_DEPLOY, offs.length)).filter((o) => !(C.isLord(G, o) && offs.length > 3)).map((o) => o.id));
+      const sel = new Set(offs.filter((o) => !(C.isLord(G, o) && offs.length > 3)).slice(0, Math.min(cap, offs.length)).map((o) => o.id));
       const box = el('div', {});
       const render = () => {
         const chosen = offs.filter((o) => sel.has(o.id)), mus = C.muster(G, c, chosen, enemyCity ? Math.round(c.troops * 0.85) : c.troops), byId = Object.fromEntries(mus.map((m) => [m.o.id, m.troops]));
         const foes = enemyCity ? (C.officersIn(G, enemyCity).length ? C.officersIn(G, enemyCity) : null) : null;
         clear(box).append(el('div', { class: 'title' }, title),
           enemyCity ? el('div', { class: 'small dim' }, T(`敵方：${fname(G, enemyCity.owner)} · 兵 ${enemyCity.troops} · 武將 ${foes ? foes.length : 0}${foes ? '' : '（守備兵）'} · 城防 ${enemyCity.wall}`, `Enemy: ${fname(G, enemyCity.owner)} · ${enemyCity.troops} troops · ${foes ? foes.length : 0} officers${foes ? '' : ' (garrison)'} · walls ${enemyCity.wall}`)) : null,
-          el('div', { class: 'small', style: { margin: '4px 0' } }, T(`選擇出陣武將（最多 ${C.MAX_DEPLOY} 人）：已選 ${sel.size} 人 · 出陣兵力 ${mus.reduce((s, m) => s + m.troops, 0)} / 城內 ${c.troops}`, `Choose up to ${C.MAX_DEPLOY}: ${sel.size} chosen · ${mus.reduce((s, m) => s + m.troops, 0)} of ${c.troops} troops march`)),
-          el('div', { class: 'list scroll', style: { maxHeight: '52vh' } }, offs.map((o) => { const s = battleStats(o), on = sel.has(o.id); return el('div', { class: 'item' + (on ? ' on' : ''), onclick: () => { if (on) sel.delete(o.id); else if (sel.size < C.MAX_DEPLOY) sel.add(o.id); render(); } }, el('span', { class: 'check' }, on ? '☑' : '☐'), face(o, G.factions[G.player].color, 28), el('div', { class: 'grow' }, el('div', {}, nm(o.name), C.isLord(G, o) ? el('span', { class: 'tag lord' }, T('君主', 'Lord')) : null), el('div', { class: 'small dim' }, `${T(s.cls)} Lv${o.lv} · ${T('移動', 'Mv')}${s.mov}`)), el('span', { class: 'small' }, on ? `${byId[o.id] || 0}/${s.hp}` : `—/${s.hp}`)); })),
+          el('div', { class: 'small', style: { margin: '4px 0' } }, mission ? T(`選擇出戰武將（最多 ${cap} 人）：已選 ${sel.size} 人 · 鍛鍊任務以滿兵力出戰，不消耗城內士兵`, `Choose up to ${cap}: ${sel.size} chosen · missions go at full strength and use no city troops`) : T(`選擇出陣武將（最多 ${cap} 人）：已選 ${sel.size} 人 · 出陣兵力 ${mus.reduce((s, m) => s + m.troops, 0)} / 城內 ${c.troops}`, `Choose up to ${cap}: ${sel.size} chosen · ${mus.reduce((s, m) => s + m.troops, 0)} of ${c.troops} troops march`)),
+          el('div', { class: 'list scroll', style: { maxHeight: '52vh' } }, offs.map((o) => { const s = battleStats(o), on = sel.has(o.id); return el('div', { class: 'item' + (on ? ' on' : ''), onclick: () => { if (on) sel.delete(o.id); else if (sel.size < cap) sel.add(o.id); render(); } }, el('span', { class: 'check' }, on ? '☑' : '☐'), face(o, G.factions[G.player].color, 28), el('div', { class: 'grow' }, el('div', {}, nm(o.name), C.isLord(G, o) ? el('span', { class: 'tag lord' }, T('君主', 'Lord')) : null), el('div', { class: 'small dim' }, `${T(s.cls)} Lv${o.lv} · ${T('移動', 'Mv')}${s.mov}`)), el('span', { class: 'small' }, mission ? `${s.hp}` : on ? `${byId[o.id] || 0}/${s.hp}` : `—/${s.hp}`)); })),
           el('div', { class: 'small dim', style: { marginTop: '4px' } }, T('提示：君主出陣時就是主將，君主撤退就會戰敗。不帶君主時，第一位武將擔任主將。', 'Tip: a lord who marches is the commander, and losing them loses the battle. Otherwise the first officer leads.')),
-          el('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '8px' } }, el('button', { class: 'btn', onclick: () => { close(); resolve(null); } }, T('取消', 'Cancel')), el('button', { class: 'btn primary', disabled: !sel.size || null, onclick: () => { close(); resolve(offs.filter((o) => sel.has(o.id))); } }, enemyCity ? T('出陣！', 'March!') : T('迎擊！', 'Defend!'))));
+          el('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '8px' } }, el('button', { class: 'btn', onclick: () => { close(); resolve(null); } }, T('取消', 'Cancel')), el('button', { class: 'btn primary', disabled: !sel.size || null, onclick: () => { close(); resolve(offs.filter((o) => sel.has(o.id))); } }, mission ? T('出發！', 'Set out!') : enemyCity ? T('出陣！', 'March!') : T('迎擊！', 'Defend!'))));
       };
       render(); const close = sheet(box, { onBack: () => resolve(null), outside: false });
     });
@@ -207,7 +250,8 @@ export async function runCampaign(G, { save, quit }) {
       el('div', {}, res.atkWon ? T(`${cityName(res.city.name)} 落入${fname(G, res.af)}手中。`, `${cityName(res.city.name)} falls to ${fname(G, res.af)}.`) : T(`${cityName(res.city.name)} 守住了。`, `${cityName(res.city.name)} holds.`)),
       auto ? el('div', { class: 'small dim' }, T('（委任作戰）', '(fought by your officers)')) : null,
       lines.length ? el('div', { style: { marginTop: '8px' } }, lines) : null,
-      res.items && res.items.length ? el('div', { class: 'small', style: { marginTop: '6px', color: 'var(--gold2)' } }, T('戰利品：', 'Spoils: ') + res.items.map((id) => T((USABLES[id] || itemDef(id)).name)).join(T('、', ', '))) : null,
+      [...(res.items || []), ...(res.loot || [])].length ? el('div', { style: { marginTop: '6px' } }, el('div', { class: 'title small' }, T('戰利品', 'Spoils')), [...(res.items || []), ...(res.loot || [])].map((id) => itemLine(id))) : null,
+      res.fortune ? el('div', { class: 'small' }, T(`招財：金 +${res.fortune}`, `Fortune: gold +${res.fortune}`)) : null,
       res.captured.length ? el('div', { class: 'small', style: { marginTop: '6px' } }, T('俘虜：', 'Captured: ') + res.captured.map((o) => nm(o.name)).join(T('、', ', '))) : null), [T('確定', 'OK')]);
   }
   // decide the fate of each captive taken by the player
@@ -266,7 +310,8 @@ export async function runCampaign(G, { save, quit }) {
   const nextStrats = (o) => (LEARN[o.line] || []).filter(([, lv]) => lv > o.lv).slice(0, 4).map(([id, lv]) => `${T(STRATS[id].name)}(Lv${lv})`).join(T('、', ', ')) || '—';
   async function changeGear(o, slot, redraw) {
     const ids = Object.keys(G.bag).filter((id) => { const it = itemDef(id); return it && it.slot === slot && fits(o, it); });
-    const labels = ids.map((id) => `${T(itemDef(id).name)} ×${G.bag[id]}　${itemText(itemDef(id))}`);
+    ids.sort((a, b) => ((itemDef(b).rarity || itemDef(b).tier || 0) - (itemDef(a).rarity || itemDef(a).tier || 0)));
+    const labels = ids.map((id) => { const it = itemDef(id); return `${it.rarity ? `【${T(RARITY[it.rarity].name)}】` : ''}${T(it.name)} ×${G.bag[id]}　${itemText(it)}`; });
     const r = await modal(el('div', {}, el('div', { class: 'title' }, T('更換裝備', 'Change equipment')), ids.length ? null : el('div', { class: 'small dim' }, T('道具袋裡沒有適合的裝備（可以到市場購買）', 'Nothing in the bag fits (try a market)'))), [...labels, o.eq[slot] ? T('卸下', 'Remove') : null, T('取消', 'Cancel')].filter(Boolean));
     if (r < ids.length) C.equip(G, o, ids[r]);
     else if (o.eq[slot] && r === ids.length) C.unequip(G, o, slot);
@@ -283,7 +328,7 @@ export async function runCampaign(G, { save, quit }) {
   function bagSheet() {
     const ids = Object.keys(G.bag).filter((id) => G.bag[id] > 0);
     const box = el('div', {}, el('div', { class: 'title' }, T('道具袋', 'Items')), el('div', { class: 'small dim' }, T('裝備請在武將的資料頁更換；豆、麥、米、酒、傷藥可以在戰鬥中使用。', 'Equip gear from an officer\'s page; beans, wheat, rice, wine and salve are used in battle.')),
-      el('div', { class: 'list scroll', style: { maxHeight: '60vh' } }, ids.length ? ids.map((id) => { const it = USABLES[id] || itemDef(id); return el('div', { class: 'item' }, el('div', { class: 'grow' }, T(it.name), el('div', { class: 'small dim' }, itemText(it))), el('b', {}, `×${G.bag[id]}`)); }) : el('div', { class: 'dim' }, '—')),
+      el('div', { class: 'list scroll', style: { maxHeight: '64vh' } }, ids.length ? ids.sort((a, b) => ((RELICS[b] || {}).rarity || 0) - ((RELICS[a] || {}).rarity || 0)).map((id) => el('div', { class: 'item' }, el('div', { class: 'grow' }, itemLine(id, true)), el('b', {}, `×${G.bag[id]}`))) : el('div', { class: 'dim' }, '—')),
       el('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '8px' } }, el('button', { class: 'btn primary', onclick: () => close() }, T('關閉', 'Close'))));
     const close = sheet(box);
   }
@@ -313,12 +358,20 @@ export async function runCampaign(G, { save, quit }) {
   if (G.t === 0 && !G.introSeen) { G.introSeen = true; await help(true); }
   return done;
 }
+// an item's name in its rarity colour, with what it does
+export function itemLine(id, full = true) {
+  const it = USABLES[id] || itemDef(id); if (!it) return el('div', {}, id);
+  const col = it.rarity ? RARITY[it.rarity].col : it.famous ? '#ffc840' : 'var(--ink)';
+  return el('div', { class: 'small' }, el('b', { style: { color: col } }, T(it.name)), it.rarity ? el('span', { class: 'tag', style: { color: col, borderColor: col } }, T(RARITY[it.rarity].name)) : it.famous ? el('span', { class: 'tag', style: { color: col, borderColor: col } }, T('名品', 'Famous')) : null,
+    full ? el('div', { class: 'dim' }, itemText(it)) : null);
+}
 export function itemText(it) {
   const p = [];
   for (const [k, z, e] of [['atk', '攻擊', 'ATK'], ['def', '防禦', 'DEF'], ['spi', '精神', 'SPI'], ['agi', '爆發', 'AGI'], ['mor', '士氣', 'MOR'], ['mov', '移動', 'Move'], ['mp', '策略值', 'MP'], ['res', '抗策略%', 'Resist%']]) if (it[k]) p.push(`${T(z, e)}+${it[k]}`);
   if (it.heal) p.push(T(`回復兵力 ${it.heal}`, `restores ${it.heal} troops`)); if (it.mph) p.push(T(`回復策略值 ${it.mph}`, `restores ${it.mph} MP`)); if (it.cure) p.push(T('解除異常', 'cures ailments'));
   if (it.attr) p.push(Object.entries(it.attr).map(([k, v]) => `${T({ lead: '統率', war: '武力', int: '智力', pol: '政治', cha: '魅力' }[k], k.toUpperCase())}+${v}`).join(' '));
   if (it.only) p.push(it.only === 'horse' ? T('騎乘部隊專用', 'mounted only') : T('步行部隊專用', 'foot only'));
+  for (const d of fxText(it)) p.push(T(...d));
   if (it.type) p.push(T({ sword: '劍：步兵、君主', spear: '槍：騎兵', bow: '弓：弓兵', fan: '羽扇：策士', staff: '杖：道士', fist: '拳套：武術家', axe: '斧：山賊', heavy: '鎧：重裝部隊', light: '皮甲：輕裝部隊', robe: '道袍：策士、道士' }[it.type] || '', it.type));
   return p.join(' · ');
 }
@@ -328,5 +381,8 @@ export async function help(first = false) {
     el('p', {}, T('【戰略】每個月，每位武將可以執行一個指令：開墾、商業、城防、徵兵、訓練、搜索、登用、移動。點地圖上的城市查看情報；與我方相鄰的敵城會標成紅色，可以「出征」。結束月份後，其他勢力也會行動，也可能來攻打你的城。', 'Strategy: each month every officer can do one thing — farm, trade, walls, draft, train, search, recruit, move. Tap a city on the map; enemy cities next to yours are ringed in red and can be attacked. When the month ends the other warlords move too — and may attack you.')),
     el('p', {}, T('【戰鬥】曹操傳式回合制：我軍全部行動完，換敵軍行動。點我軍部隊→藍色格子移動→選攻擊、策略、道具或待機。騎兵剋步兵、步兵剋弓兵、弓兵剋騎兵。地形會影響移動與防禦；被攻擊的部隊如果打得到，會反擊。', 'Battle, Cao Cao Den style: your whole army moves, then theirs. Tap a unit, a blue tile to move, then Attack, Strategy, Item or Wait. Cavalry beat infantry, infantry beat archers, archers beat cavalry. Terrain changes movement and defence; a struck unit hits back if it can reach.')),
     el('p', {}, T('【策略】火計在水上無效、森林草原加成；水計要靠近水邊；落石要在山地。混亂、牽制、封殺可以封住敵人；援助回復兵力。', 'Strategies: fire won\'t burn on water and burns hotter in forest and grass; floods need water nearby; rockfall needs hills. Confuse, Pin and Silence hold foes back; Relief restores troops.')),
+    el('p', {}, T('【鍛鍊任務】按上方「任務」：討伐山賊、剿滅黃巾、平定蠻族、擊退賊騎、猛將試煉、尋寶探險。派最多 6 名武將以滿兵力出戰，不消耗城內士兵；完成後獲得經驗、金錢與寶物，地圖上的寶箱走上去就能打開。任務每月更新。', 'Missions (the Missions button): bandit hunts, Yellow Turban remnants, the southern tribes, raiders, a champion’s trial, a treasure hunt. Up to 6 officers go at full strength without using city troops; win for experience, gold and treasure, and walk onto chests to open them. New missions every month.')),
+    el('p', {}, T('【寶物】五百種寶物分為凡品、良品、珍品、寶物、神器。除了能力加成，還有回復、吸血、反傷、迎擊、先手必勝、不屈、破甲、遠射、衝鋒、統帥、省力、抗策、免疫混亂等四十多種效果。在武將資料頁的裝備欄更換。', 'Treasures: five hundred, from Common to Legendary. Besides stats they carry over forty powers — regen, lifesteal, thorns, pre-emptive strikes, overwhelm, undying, pierce, long shot, charge, command, economy, resolve, immunities and more. Equip them from an officer’s page.')),
+    el('p', {}, T('【守城設施】「設施」指令可以修建箭樓（城牆上自動射擊）、拒馬（騎兵無法通過）、陷坑（敵軍踩到損兵並停下）、護城河（只能從城門前的橋進攻）。敵方城市也會修建，攻城前先看看城市的防守設施。', 'Defences: the Defences order builds arrow towers (they shoot from the walls), barricades (cavalry can’t pass), pit traps (attackers lose troops and stop) and a moat (attack only across the bridges at the gates). Enemy cities build them too — check a city’s defences before you attack.')),
     el('p', {}, T('【勝敗】攻城戰：擊退敵將主將、全滅敵軍或佔領城池就勝利；我方主將撤退或超過回合限制就敗北。武將會升級，Lv15 與 Lv30 晉升兵種。俘虜可以登用、釋放或處斬。統一全部 45 座城就是天下統一！', 'Victory: rout their commander, wipe them out, or take the keep. Lose if your commander falls or time runs out. Officers level up and promote at Lv15 and Lv30. Captives can be recruited, released or executed. Hold all 45 cities to unite the realm!'))), [T('明白了', 'Got it')]);
 }

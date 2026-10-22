@@ -64,7 +64,7 @@ async function main() {
   initCloud(() => { /* a newer save arrived from the cloud; the title shows it next time */ });
   for (;;) {
     const t = await title();
-    if (t.load) G = t.load;
+    if (t.load) G = C.migrate(t.load);
     else {
       const sc = await chooseScenario(); if (!sc) continue;
       const fid = await chooseFaction(sc); if (!fid) continue;

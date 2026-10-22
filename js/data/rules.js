@@ -23,7 +23,8 @@ export const TERRAIN = {
   town:   { name: ['城內', 'Town'],      cost: { foot: 1, horse: 1, wild: 1, cart: 1 }, def: 5 },
   castle: { name: ['城池', 'Keep'],      cost: { foot: 1, horse: 1, wild: 1, cart: 1 }, def: 30, heal: 15 },
   camp:   { name: ['陣營', 'Camp'],      cost: { foot: 1, horse: 1, wild: 1, cart: 1 }, def: 15, heal: 10 },
-  fence:  { name: ['鹿砦', 'Barricade'], cost: { foot: 2, horse: 0, wild: 2, cart: 2 }, def: 25 },
+  fence:  { name: ['拒馬', 'Barricade'], cost: { foot: 2, horse: 0, wild: 2, cart: 2 }, def: 25 },
+  moat:   { name: ['護城河', 'Moat'],    cost: { foot: 0, horse: 0, wild: 0, cart: 0 }, def: 0, wet: true },
 };
 // how well each move type fights on each terrain (地形適性), in % — scales both attack and defence
 export const APT = {
@@ -50,6 +51,7 @@ export const LINES = {
   brawl:  { kind: 'wild', move: 'wild',  names: [['武術家', 'Martial Artist'], ['拳法家', 'Fist Master'], ['武道家', 'Grandmaster']], mov: [5, 5, 6], r: [[1, 1], [1, 1], [1, 1]], hp: [410, 41], mp: [8, 0.6], g: 'ACCSA', wpn: 'fist', arm: 'light' },
   bandit: { kind: 'wild', move: 'wild',  names: [['山賊', 'Bandits'], ['義賊', 'Outlaws'], ['綠林豪傑', 'Greenwood Heroes']], mov: [5, 5, 6], r: [[1, 1], [1, 1], [1, 1]], hp: [430, 43], mp: [8, 0.6], g: 'ABCBC', wpn: 'axe', arm: 'light' },
   siege:  { kind: 'cart', move: 'cart',  names: [['衝車', 'Battering Ram'], ['投石車', 'Catapult'], ['霹靂車', 'Thunder Catapult']], mov: [3, 3, 4], r: [[1, 1], [2, 4], [2, 5]], hp: [420, 42], mp: [4, 0.3], g: 'SBCCC', wpn: null, arm: 'heavy' },
+  tower:  { kind: 'tower', move: 'cart', names: [['箭樓', 'Arrow Tower'], ['弩樓', 'Crossbow Tower'], ['連弩樓', 'Repeater Tower']], mov: [0, 0, 0], r: [[2, 3], [2, 3], [2, 4]], hp: [520, 30], mp: [0, 0], g: 'ABCCB', wpn: null, arm: 'heavy' },
   lord:   { kind: 'lord', move: 'horse', names: [['群雄', 'Warlord'], ['霸王', 'Overlord'], ['皇帝', 'Emperor']], mov: [5, 6, 6], r: [[1, 1], [1, 1], [1, 1]], hp: [500, 50], mp: [16, 1.4], g: 'AABBS', wpn: 'sword', arm: 'heavy' },
 };
 export const LINE_ORDER = ['inf', 'cav', 'arch', 'hbow', 'strat', 'taoist', 'brawl', 'bandit', 'siege', 'lord'];
@@ -99,6 +101,7 @@ export const LEARN = {
   brawl: [['guwu', 8], ['jili', 16], ['shenxing', 24]],
   bandit: [['hunluan', 10], ['duyan', 20], ['dunbing', 28]],
   siege: [['luoshi', 12], ['shanbeng', 32]],
+  tower: [],
   lord: [['jili', 3], ['yuanzhu', 6], ['huoji', 10], ['guwu', 15], ['tiebi', 20], ['dayuanzhu', 25], ['jiaore', 30], ['buji', 38]],
 };
 // famous strategists' own arts

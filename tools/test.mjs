@@ -17,7 +17,7 @@ ok('gear types match lines', Object.values(LINES).every((L) => (!L.wpn || GEAR[L
 // every battlefield: the attackers can walk to the keep
 let blocked = 0;
 for (const th of Object.keys(THEMES)) for (let s = 0; s < 30; s++) {
-  const m = makeField({ theme: th, seed: s * 31 + 7 });
+  const m = makeField({ theme: th, seed: s * 31 + 7, defense: s % 2 ? { moat: true, fence: 6, trap: 6, tower: 6 } : {} });
   const B = { map: m, units: [] }, u = { s: { move: 'foot' } };
   const d = BT.stepsTo(B, u, [{ x: m.keep[0], y: m.keep[1] }]);
   if (!m.atkStart.some(([x, y]) => d.has(`${x},${y}`))) { blocked++; if (blocked < 4) console.log('   blocked', th, s); }
@@ -67,6 +67,36 @@ for (const sc of SCENARIOS) {
   const o = { name: '測試', lead: 70, war: 80, int: 50, pol: 40, cha: 60, line: 'cav', lv: 14, exp: 0, eq: {} };
   const s0 = battleStats(o); gainExp(o, 100); const s1 = battleStats(o);
   ok('level 15 promotes light cavalry', s0.tier === 0 && s1.tier === 1 && s1.hp > s0.hp, `${s0.cls[0]} → ${s1.cls[0]}, HP ${s0.hp} → ${s1.hp}`);
+}
+// a siege with towers and a moat
+{
+  const G = C.newGame({ scenario: '190', player: 'cao', seed: 11 });
+  const dst = G.cities.find((c) => c.name === '洛陽'), src = G.cities.find((c) => c.name === '陳留');
+  dst.fac = { tower: 6, fence: 6, trap: 6, moat: true };
+  const B = C.battleSetup(G, { af: 'cao', from: src.id, to: dst.id, atkOfficers: C.officersIn(G, src) });
+  const towers = B.units.filter((u) => u.structure).length;
+  C.autoBattle(B); const res = C.settle(G, B);
+  ok('a siege with towers, moat and pits', towers >= 4 && !!B.over && B.map.tiles.some((t) => t.t === 'moat'), `${towers} towers · ${B.over} by ${B.why} on turn ${B.turn} · ${B.events.filter((e) => e.t === 'trap').length} pits sprung · towers left ${dst.fac.tower}`);
+}
+// training missions: every kind sets up, runs and pays out
+{
+  let bad = 0, wins = 0, items = 0;
+  for (const kind of Object.keys(C.MISSION_KINDS)) for (let k = 0; k < 3; k++) {
+    const G = C.newGame({ scenario: '190', player: 'cao', seed: 20 + k });
+    const m = { ...G.missions[0], kind, id: 'x' + k, stars: 1 + k * 2, foes: 4 + k, rarity: 1 + k * 2, theme: C.MISSION_KINDS[kind].themes[0], seed: 77 + k };
+    G.missions.push(m);
+    const offs = C.officersIn(G, G.cities[m.city]).slice(0, 6);
+    try { const B = C.missionSetup(G, m, offs); B.sides.atk.player = false; for (const u of B.units) u.ai = true; C.autoBattle(B); B.sides.atk.player = true; const r = C.settleMission(G, B, m); if (r.won) wins++; items += r.items.length + r.loot.length; if (!B.over) bad++; }
+    catch (e) { bad++; console.log(e.stack); }
+  }
+  ok('training missions run and reward', bad === 0 && items > 0, `${wins}/18 won by the AI · ${items} items · ${bad} problems`);
+}
+// treasures: every one fits somebody, powers apply
+{
+  const { RELIC_LIST } = await import('../js/data/relics.js');
+  const o = { name: '測試', lead: 70, war: 80, int: 60, pol: 40, cha: 60, line: 'cav', lv: 20, exp: 0, eq: { w: 'spear2', a: 'heavy2', x: null } };
+  const plain = battleStats(o); const relic = RELIC_LIST.find((x) => x.slot === 'a' && x.fx.hpPct); o.eq.a = relic.id; const withIt = battleStats(o);
+  ok('500 treasures with powers', RELIC_LIST.length === 500 && new Set(RELIC_LIST.map((x) => x.name[0])).size === 500 && withIt.hp > plain.hp && withIt.fx.hpPct, `${relic.name[0]}: HP ${plain.hp} → ${withIt.hp}`);
 }
 console.log(fails ? `test: ${fails} FAILED` : 'test: all passed');
 process.exit(fails ? 1 : 0);

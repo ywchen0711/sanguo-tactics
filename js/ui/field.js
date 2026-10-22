@@ -1,10 +1,13 @@
 // The battlefield on screen: a top-down grid of 24-pixel tiles drawn at 2× (and zoomed), the units on it,
 // highlighted ranges, and the little animations — walking, striking, strategies, numbers rising off the units.
-import { unitSprite, tileSprite, hash } from './sprites.js';
+import { unitSprite, tileSprite, hash, chestSprite, objectSprite } from './sprites.js';
 import { AILMENTS } from '../data/rules.js';
 
 export const BASE = 48;
-const WET = new Set(['river', 'shoal', 'bridge', 'marsh']);
+const WET = new Set(['river', 'shoal', 'bridge', 'marsh', 'moat']);
+const WATER = new Set(['river', 'shoal', 'bridge', 'moat']);
+// tall things that stand on a tile and overlap the one above
+const OBJ = { castle: 'keep', gate: 'gatehouse', village: 'village', camp: 'camp', fence: 'fence' };
 export class Field {
   constructor(cv) {
     this.cv = cv; this.g = cv.getContext('2d');
@@ -13,7 +16,13 @@ export class Field {
   }
   setBattle(B) {
     this.B = B; const m = B.map;
-    this.nb = m.tiles.map((t, i) => { if (!WET.has(t.t) || t.t === 'bridge') return 0; const x = i % m.w, y = Math.floor(i / m.w); let f = 0; const land = (dx, dy) => { const n = m.tiles[(y + dy) * m.w + x + dx]; return n && !WET.has(n.t) && x + dx >= 0 && x + dx < m.w; }; if (y > 0 && land(0, -1)) f |= 1; if (land(1, 0)) f |= 2; if (y < m.h - 1 && land(0, 1)) f |= 4; if (land(-1, 0)) f |= 8; return f; });
+    // for each tile: which neighbours are of the same kind (roads join roads, walls join walls) and, for water, which are land
+    const at = (x, y) => (x >= 0 && y >= 0 && x < m.w && y < m.h ? m.tiles[y * m.w + x].t : null);
+    const same = { road: new Set(['road', 'bridge', 'gate']), wall: new Set(['wall', 'gate']), gate: new Set(['wall', 'gate']), bridge: new Set(['road', 'bridge', 'gate', 'plain', 'grass', 'desert', 'snow', 'town']) };
+    this.mask = m.tiles.map((t, i) => { const S = same[t.t]; if (!S) return 0; const x = i % m.w, y = Math.floor(i / m.w); let f = 0; [[0, -1, 1], [1, 0, 2], [0, 1, 4], [-1, 0, 8]].forEach(([dx, dy, b]) => { const n = at(x + dx, y + dy); if (n && S.has(n)) f |= b; }); return f; });
+    this.nb = m.tiles.map((t, i) => { if (!WATER.has(t.t) || t.t === 'bridge') return 0; const x = i % m.w, y = Math.floor(i / m.w); let f = 0; [[0, -1, 1], [1, 0, 2], [0, 1, 4], [-1, 0, 8]].forEach(([dx, dy, b]) => { const n = at(x + dx, y + dy); if (n && !WET.has(n)) f |= b; }); return f; });
+    // a quarter of the town's tiles have a house
+    this.objs = m.tiles.map((t, i) => OBJ[t.t] || (t.t === 'town' && hash(`h${i}`) % 4 === 0 && !(i % m.w === m.keep[0] && Math.floor(i / m.w) === m.keep[1]) ? (OBJ[t.t] || 'house') : null));
     for (const u of B.units) { u.ax = u.x; u.ay = u.y; u.alpha = 1; u.flash = 0; }
     this.resize();
   }
@@ -61,7 +70,7 @@ export class Field {
     const frame = Math.floor(this.time * 1.6) % 2;
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const i = y * m.w + x, t = m.tiles[i].t, [sx, sy] = this.scr(x, y);
-      g.drawImage(tileSprite(t, hash(`${x},${y}`) % 4, WET.has(t) ? frame : 0, this.nb[i]), Math.floor(sx), Math.floor(sy), Math.ceil(ts), Math.ceil(ts));
+      g.drawImage(tileSprite(t, hash(`${x},${y}`) % 4, WATER.has(t) ? frame : 0, this.mask[i], this.nb[i]), Math.floor(sx), Math.floor(sy), Math.ceil(ts), Math.ceil(ts));
     }
     // faint grid
     g.strokeStyle = 'rgba(0,0,0,.12)'; g.lineWidth = 1; g.beginPath();
@@ -73,12 +82,25 @@ export class Field {
     for (const [k, col] of this.marks) { const [x, y] = k.split(',').map(Number), [sx, sy] = this.scr(x, y); g.globalAlpha = pulse; g.fillStyle = col; g.fillRect(sx + 1, sy + 1, ts - 2, ts - 2); g.globalAlpha = 1; }
     // the cursor
     if (this.cursor) { const [sx, sy] = this.scr(this.cursor[0], this.cursor[1]), k = ts * 0.25, w = Math.max(2, ts / 16); g.strokeStyle = '#fff6c0'; g.lineWidth = w; g.beginPath(); for (const [cx, cy, dx, dy] of [[sx, sy, 1, 1], [sx + ts, sy, -1, 1], [sx, sy + ts, 1, -1], [sx + ts, sy + ts, -1, -1]]) { g.moveTo(cx + dx * k, cy + w / 2 * dy); g.lineTo(cx + w / 2 * dx, cy + w / 2 * dy); g.lineTo(cx + w / 2 * dx, cy + dy * k); } g.stroke(); }
-    // units, back to front
-    const us = B.units.filter((u) => !u.gone || u.alpha > 0).sort((a, b) => a.ay - b.ay);
-    for (const u of us) this.drawUnit(u, dt);
+    // standing things and units, back to front (a unit stands in front of a building on its own row)
+    const list = [];
+    for (let y = Math.max(0, y0 - 1); y <= y1; y++) for (let x = x0; x <= x1; x++) { const k = this.objs[y * m.w + x]; if (k) list.push({ y, draw: () => this.drawObj(k, x, y, hash(`${x}.${y}`) % 4) }); }
+    const me = B.sides.atk.player ? 'atk' : B.sides.def.player ? 'def' : null;
+    for (const c of m.chests || []) if (!c.taken && !c.hidden) list.push({ y: c.y + 0.1, draw: () => this.drawObj('chest', c.x, c.y, 0, Math.sin(this.time * 3 + c.x) * 0.04) });
+    for (const k of m.sprung || []) { const [x, y] = k.split(',').map(Number); list.push({ y: y - 0.1, draw: () => this.drawObj('pit', x, y, 0) }); }
+    if (me === 'def') for (const k of m.traps || []) { const [x, y] = k.split(',').map(Number); list.push({ y: y - 0.1, draw: () => this.drawObj('trap', x, y, 0) }); }
+    for (const u of B.units) if (!u.gone || u.alpha > 0) list.push({ y: u.ay + 0.5, draw: () => this.drawUnit(u, dt) });
+    list.sort((a, b) => a.y - b.y);
+    for (const d of list) d.draw();
     // effects and numbers
     this.fx = this.fx.filter((f) => (f.t += dt) < f.dur);
     for (const f of this.fx) this.drawFx(f);
+  }
+  // the player's units are blue-ringed, the enemy's red, whichever side is attacking
+  mine(u) { const B = this.B; return B.sides[u.side].player || (!B.sides.atk.player && !B.sides.def.player && u.side === 'atk'); }
+  drawObj(kind, x, y, variant, bob = 0) {
+    const ts = this.ts, [sx, sy] = this.scr(x, y), col = this.colors.def;
+    this.g.drawImage(objectSprite(kind, variant, col), Math.floor(sx), Math.floor(sy - ts * 0.5 + bob * ts), Math.ceil(ts), Math.ceil(ts * 1.5));
   }
   drawUnit(u, dt) {
     const g = this.g, ts = this.ts, [sx, sy] = this.scr(u.ax, u.ay), B = this.B;
@@ -86,20 +108,23 @@ export class Field {
     g.globalAlpha = u.alpha;
     const col = this.colors[u.side], tired = u.side === B.side && u.done && !B.over;
     const frame = tired ? 0 : Math.floor(this.time * 2 + u.id * 0.37) % 2;
-    // team disc under the feet
-    g.fillStyle = u.side === 'atk' ? 'rgba(80,140,255,.35)' : 'rgba(255,90,70,.35)';
-    g.beginPath(); g.ellipse(sx + ts / 2, sy + ts * 0.86, ts * 0.36, ts * 0.11, 0, 0, Math.PI * 2); g.fill();
-    if (u === this.active) { g.strokeStyle = '#ffe680'; g.lineWidth = Math.max(1.5, ts / 24); g.stroke(); }
-    const spr = unitSprite(u.s.line, u.s.tier, col, frame, tired);
+    // a shadow, and a ring in the army's colour under the feet
+    if (!u.structure) {
+      g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.ellipse(sx + ts / 2, sy + ts * 0.9, ts * 0.34, ts * 0.1, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = this.mine(u) ? 'rgba(110,170,255,.85)' : 'rgba(255,110,90,.85)'; g.lineWidth = Math.max(1.5, ts / 26);
+      g.beginPath(); g.ellipse(sx + ts / 2, sy + ts * 0.88, ts * 0.38, ts * 0.12, 0, 0, Math.PI * 2); g.stroke();
+    }
+    if (u === this.active) { g.strokeStyle = '#ffe680'; g.lineWidth = Math.max(2, ts / 18); g.beginPath(); g.ellipse(sx + ts / 2, sy + ts * 0.88, ts * 0.42, ts * 0.14, 0, 0, Math.PI * 2); g.stroke(); }
+    const spr = unitSprite(u.s.line, u.s.tier, col, frame, tired), tall = u.structure ? 0.45 : 0;
     const lx = u.lunge ? u.lunge[0] * ts * 0.3 : 0, ly = u.lunge ? u.lunge[1] * ts * 0.3 : 0;
     g.save(); g.translate(Math.floor(sx + lx + (u.dir < 0 ? ts : 0)), Math.floor(sy + ly)); if (u.dir < 0) g.scale(-1, 1);
-    g.drawImage(spr, 0, 0, ts, ts);
-    if (u.flash > 0) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = u.alpha * Math.min(1, u.flash * 3); g.drawImage(spr, 0, 0, ts, ts); g.globalCompositeOperation = 'source-over'; g.globalAlpha = u.alpha; u.flash -= dt; }
+    g.drawImage(spr, 0, -ts * tall, ts, ts * (1 + tall));
+    if (u.flash > 0) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = u.alpha * Math.min(1, u.flash * 3); g.drawImage(spr, 0, -ts * tall, ts, ts * (1 + tall)); g.globalCompositeOperation = 'source-over'; g.globalAlpha = u.alpha; u.flash -= dt; }
     g.restore();
     // troops bar and markers
     const bw = ts * 0.78, bx = sx + (ts - bw) / 2, by = sy + ts - Math.max(4, ts / 10), bh = Math.max(3, ts / 14), k = Math.max(0, u.hp) / u.s.hp;
     g.fillStyle = 'rgba(0,0,0,.65)'; g.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-    g.fillStyle = k > 0.5 ? (u.side === 'atk' ? '#5ab0ff' : '#ff6a50') : k > 0.25 ? '#ffd040' : '#ff3030'; g.fillRect(bx, by, bw * k, bh);
+    g.fillStyle = k > 0.5 ? (this.mine(u) ? '#5ab0ff' : '#ff6a50') : k > 0.25 ? '#ffd040' : '#ff3030'; g.fillRect(bx, by, bw * k, bh);
     if (u.commander) { const fx = sx + ts * 0.06, fy = sy + ts * 0.04, fs = ts * 0.22; g.fillStyle = '#5a3a1a'; g.fillRect(fx, fy, Math.max(1, ts / 24), fs * 1.6); g.fillStyle = col; g.fillRect(fx + 2, fy, fs, fs * 0.8); g.fillStyle = '#ffd040'; g.fillRect(fx + 2, fy + fs * 0.8 - 2, fs, 2); }
     const sts = Object.keys(u.st); sts.forEach((k2, i) => { g.fillStyle = AILMENTS[k2] ? AILMENTS[k2][2] : '#fff'; g.beginPath(); g.arc(sx + ts * (0.88 - i * 0.14), sy + ts * 0.12, ts * 0.06, 0, Math.PI * 2); g.fill(); });
     const bufs = Object.entries(u.buf); if (bufs.length) { g.fillStyle = bufs.some(([, v]) => v[0] > 0) ? '#7aff8a' : '#ff8a7a'; g.font = `bold ${Math.round(ts * 0.22)}px sans-serif`; g.fillText(bufs.some(([, v]) => v[0] > 0) ? '▲' : '▼', sx + ts * 0.74, sy + ts * 0.62); }

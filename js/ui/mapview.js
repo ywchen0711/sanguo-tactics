@@ -63,11 +63,36 @@ export class MapView {
     g.strokeStyle = 'rgba(90,60,30,.6)'; g.lineWidth = Math.max(2, s * 0.4); g.strokeRect(X(0), Y(-2), 100 * s, 106 * s);
     this.bg = c; this.bgFor = `${W}x${H}|${JSON.stringify(this.inset || {})}`;
   }
+  // each faction's lands, tinted in its colour: every bit of land belongs to its nearest city
+  territory(G) {
+    const sig = G.cities.map((c) => c.owner || '-').join(',');
+    if (this.terr && this.terrSig === sig) return this.terr;
+    if (!this.near) {
+      const inSea = (x, y) => { let r = false; for (let i = 0, j = COAST.length - 1; i < COAST.length; j = i++) { const [xi, yi] = COAST[i], [xj, yj] = COAST[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) r = !r; } return r; };
+      this.near = new Int16Array(100 * 104);
+      for (let y = 0; y < 104; y++) for (let x = 0; x < 100; x++) {
+        if (inSea(x + 0.5, y - 1.5)) { this.near[y * 100 + x] = -1; continue; }
+        let best = -1, bd = 1e9; for (const c of G.cities) { const d = (c.x - x - 0.5) ** 2 + (c.y - y + 1.5) ** 2; if (d < bd) { bd = d; best = c.id; } }
+        this.near[y * 100 + x] = bd > 220 ? -1 : best;
+      }
+    }
+    const c = document.createElement('canvas'); c.width = 100; c.height = 104; const g = c.getContext('2d'), img = g.createImageData(100, 104);
+    const own = (i) => { const n = this.near[i]; return n < 0 ? null : G.cities[n].owner; };
+    for (let i = 0; i < 100 * 104; i++) {
+      const o = own(i); if (!o) continue;
+      const [r, gg, b] = G.factions[o].color.match(/\w\w/g).map((h) => parseInt(h, 16)), x = i % 100;
+      const edge = (x > 0 && own(i - 1) !== o) || (x < 99 && own(i + 1) !== o) || (i >= 100 && own(i - 100) !== o) || (i < 100 * 103 && own(i + 100) !== o);
+      img.data.set(edge ? [r * 0.55, gg * 0.55, b * 0.55, 170] : [r, gg, b, o === G.player ? 92 : 64], i * 4);
+    }
+    g.putImageData(img, 0, 0);
+    this.terr = c; this.terrSig = sig; return c;
+  }
   draw(G, dt = 0) {
     this.time += dt;
     const g = this.g, { s, X, Y } = this.frame();
     if (!this.bg || this.bgFor !== `${this.cv.width}x${this.cv.height}|${JSON.stringify(this.inset || {})}`) this.background();
     g.drawImage(this.bg, 0, 0);
+    g.imageSmoothingEnabled = true; g.drawImage(this.territory(G), X(0), Y(-2), 100 * s, 104 * s);
     // river names
     g.font = `${Math.round(s * 1.5)}px "Noto Serif TC", serif`; g.fillStyle = 'rgba(40,70,110,.55)';
     for (const r of RIVERS.slice(0, 2)) { const [x, y] = r.pts[Math.floor(r.pts.length / 2)]; g.fillText(r.name[0], X(x) + s, Y(y) + s * 2.2); }
@@ -81,12 +106,16 @@ export class MapView {
       const mark = this.marks.get(c.id);
       if (mark) { g.strokeStyle = mark; g.lineWidth = Math.max(2, s * 0.4); g.beginPath(); g.arc(x, y, r * 1.9 + Math.sin(this.time * 5) * s * 0.2, 0, Math.PI * 2); g.stroke(); }
       if (this.sel === c.id) { g.fillStyle = 'rgba(255,240,160,.35)'; g.beginPath(); g.arc(x, y, r * 2.2, 0, Math.PI * 2); g.fill(); }
-      // a little walled square with a roof
-      g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(x - r + s * 0.2, y - r * 0.8 + s * 0.3, r * 2, r * 1.6);
-      g.fillStyle = col; g.fillRect(x - r, y - r * 0.8, r * 2, r * 1.6);
-      g.fillStyle = 'rgba(255,255,255,.25)'; g.fillRect(x - r, y - r * 0.8, r * 2, r * 0.35);
-      g.fillStyle = '#3a2418'; g.beginPath(); g.moveTo(x - r * 0.7, y - r * 0.8); g.lineTo(x, y - r * 1.5); g.lineTo(x + r * 0.7, y - r * 0.8); g.closePath(); g.fill();
-      g.strokeStyle = c.owner === G.player ? '#ffd860' : 'rgba(30,20,10,.8)'; g.lineWidth = Math.max(1, s * (c.owner === G.player ? 0.35 : 0.2)); g.strokeRect(x - r, y - r * 0.8, r * 2, r * 1.6);
+      // a walled fort: stone walls with corner towers, a hall roof, and a banner in the owner's colour
+      g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(x - r + s * 0.25, y - r * 0.6 + s * 0.35, r * 2, r * 1.5);
+      g.fillStyle = '#b8b0a0'; g.fillRect(x - r, y - r * 0.6, r * 2, r * 1.5);
+      g.fillStyle = '#d8d0c0'; g.fillRect(x - r, y - r * 0.6, r * 2, r * 0.3);
+      g.fillStyle = '#8a8070'; for (const [tx, ty] of [[-1, -0.6], [1, -0.6], [-1, 0.9], [1, 0.9]]) g.fillRect(x + tx * r - r * 0.28, y + ty * r - r * 0.28, r * 0.56, r * 0.56);
+      g.fillStyle = col; g.fillRect(x - r * 0.62, y - r * 0.25, r * 1.24, r * 0.95);
+      g.fillStyle = '#3a2418'; g.beginPath(); g.moveTo(x - r * 0.85, y - r * 0.25); g.lineTo(x, y - r * 1.05); g.lineTo(x + r * 0.85, y - r * 0.25); g.closePath(); g.fill();
+      g.fillStyle = '#5a3a1a'; g.fillRect(x + r * 0.95, y - r * 1.9, Math.max(1, s * 0.18), r * 1.4);
+      g.fillStyle = col; g.fillRect(x + r * 0.95 + Math.max(1, s * 0.18), y - r * 1.9, r * 0.8, r * 0.5);
+      g.strokeStyle = c.owner === G.player ? '#ffd860' : 'rgba(30,20,10,.8)'; g.lineWidth = Math.max(1, s * (c.owner === G.player ? 0.35 : 0.2)); g.strokeRect(x - r, y - r * 0.6, r * 2, r * 1.5);
       // name
       const fs = Math.round(Math.max(10 * this.dpr, s * 1.45));
       g.font = `bold ${fs}px "Noto Serif TC", "Noto Sans TC", serif`; g.textAlign = 'center';

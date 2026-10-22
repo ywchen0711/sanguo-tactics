@@ -23,7 +23,7 @@ export function createBattle({ map, atk, def, limit = 30, seed = 1, goal } = {})
     S.units.forEach((m, i) => {
       const p = spots[i % spots.length], s = battleStats(m.o);
       const u = { id: B.uid++, o: m.o, side: sideKey, x: p[0], y: p[1], s, hp: Math.max(1, Math.min(s.hp, m.troops ?? s.hp)), mp: s.mp, st: {}, buf: {}, moved: false, acted: false, done: false,
-        commander: !!m.commander, ai: m.ai ?? !S.player, mode: m.mode || (sideKey === 'def' ? 'hold' : 'attack'), dir: sideKey === 'atk' ? 1 : -1, start: m.troops ?? s.hp, kills: 0 };
+        commander: !!m.commander, ai: m.ai ?? !S.player, structure: !!m.structure, mode: m.mode || (sideKey === 'def' ? 'hold' : 'attack'), dir: sideKey === 'atk' ? 1 : -1, start: m.troops ?? s.hp, kills: 0 };
       // two officers on one start tile: find the nearest free spot
       if (B.units.some((o) => o.x === u.x && o.y === u.y)) { const f = freeNear(B, u.x, u.y, u); if (f) { u.x = f[0]; u.y = f[1]; } }
       B.units.push(u);
@@ -42,6 +42,13 @@ function freeNear(B, x, y, u) {
 }
 
 // ---------------------------------------------------------------- phases
+// an arrow tower on the walls: it shoots whoever comes near and can be torn down, but never moves
+export function addTower(B, side, x, y, lv) {
+  const o = { id: -200 - B.uid, name: '箭樓', lead: 70, war: 55 + Math.min(40, lv), int: 30, pol: 0, cha: 60, line: 'tower', lv, exp: 0, eq: {}, militia: true };
+  const s = battleStats(o);
+  const u = { id: B.uid++, o, side, x, y, s, hp: s.hp, mp: 0, st: {}, buf: {}, moved: false, acted: false, done: false, commander: false, ai: true, mode: 'tower', structure: true, dir: side === 'atk' ? 1 : -1, start: s.hp, kills: 0 };
+  B.units.push(u); return u;
+}
 export function startPhase(B, side) {
   B.side = side;
   ev(B, { t: 'phase', side, turn: B.turn });
@@ -50,6 +57,9 @@ export function startPhase(B, side) {
     u.moved = false; u.acted = false; u.done = false; u.from = null;
     const tt = TERRAIN[tileAt(B.map, u.x, u.y).t];
     if (tt.heal && u.hp < u.s.hp) { const n = Math.min(u.s.hp - u.hp, Math.round(u.s.hp * tt.heal / 100)); u.hp += n; ev(B, { t: 'heal', u, n, why: 'ground' }); }
+    const fx = u.s.fx || {};
+    if (fx.regen && u.hp < u.s.hp) { const n = Math.min(u.s.hp - u.hp, Math.round(u.s.hp * fx.regen / 100)); u.hp += n; ev(B, { t: 'heal', u, n, why: 'regen' }); }
+    if (fx.mpRegen && u.mp < u.s.mp) u.mp = Math.min(u.s.mp, u.mp + fx.mpRegen);
     if (u.st.poison) { const n = Math.min(u.hp - 1, Math.round(u.s.hp * 0.08)); if (n > 0) { u.hp -= n; ev(B, { t: 'dmg', u, n, why: 'poison' }); } }
     for (const k of Object.keys(u.st)) { u.st[k]--; if (u.st[k] <= 0) { delete u.st[k]; ev(B, { t: 'cured', u, st: k }); } }
     for (const k of Object.keys(u.buf)) { u.buf[k][1]--; if (u.buf[k][1] <= 0) delete u.buf[k]; }
@@ -67,17 +77,24 @@ export function endPhase(B) {
 export function finish(B, winner, why) { if (B.over) return; B.over = winner; B.why = why; ev(B, { t: 'end', winner, why }); }
 export function checkEnd(B) {
   if (B.over) return B.over;
-  const A = B.units.filter((u) => alive(u) && u.side === 'atk'), D = B.units.filter((u) => alive(u) && u.side === 'def');
+  const A = B.units.filter((u) => alive(u) && u.side === 'atk' && !u.structure), D = B.units.filter((u) => alive(u) && u.side === 'def' && !u.structure);
   if (!A.length) return finish(B, 'def', 'rout');
   if (!D.length) return finish(B, 'atk', 'rout');
   if (!A.some((u) => u.commander)) return finish(B, 'def', 'commander');
-  if (!D.some((u) => u.commander)) return finish(B, 'atk', 'commander');
+  if (B.goal !== 'rout' && !D.some((u) => u.commander)) return finish(B, 'atk', 'commander');
   if (B.map.siege && A.some((u) => u.x === B.map.keep[0] && u.y === B.map.keep[1])) return finish(B, 'atk', 'keep');
   return null;
 }
 
 // ---------------------------------------------------------------- movement
 // zone of control: stepping next to a foe ends the move (except for the tile you stand on when you start)
+// what a step costs this unit (treasures can make rough ground easy)
+export function stepCost(u, t) {
+  const c = TERRAIN[t].cost[u.s.move]; if (!c) return 0;
+  const fx = u.s.fx || {};
+  if ((fx.walk_forest && t === 'forest') || (fx.walk_hill && t === 'hill') || (fx.walk_wet && (t === 'marsh' || t === 'shoal'))) return 1;
+  return c;
+}
 export function reach(B, u) {
   const out = new Map(), key = (x, y) => `${x},${y}`;
   if (u.st.stop) { out.set(key(u.x, u.y), { x: u.x, y: u.y, cost: 0, path: [[u.x, u.y]] }); return out; }
@@ -87,10 +104,10 @@ export function reach(B, u) {
   while (q.length) {
     q.sort((a, b) => a.cost - b.cost);
     const c = q.shift();
-    if (c.cost > 0 && zoc.has(key(c.x, c.y))) continue;
+    if (c.cost > 0 && zoc.has(key(c.x, c.y)) && !(u.s.fx || {}).zocFree) continue;
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const nx = c.x + dx, ny = c.y + dy, t = tileAt(B.map, nx, ny); if (!t) continue;
-      const cost = TERRAIN[t.t].cost[u.s.move]; if (!cost) continue;
+      const cost = stepCost(u, t.t); if (!cost) continue;
       const o = unitAt(B, nx, ny); if (o && o.side !== u.side) continue;
       const nc = c.cost + cost; if (nc > mov) continue;
       const k = key(nx, ny), prev = out.get(k); if (prev && prev.cost <= nc) continue;
@@ -102,11 +119,23 @@ export function reach(B, u) {
   return out;
 }
 export function moveTo(B, u, x, y, path) {
-  if (u.x === x && u.y === y) { u.moved = true; return; }
-  u.from = [u.x, u.y]; const p = path || [[u.x, u.y], [x, y]];
+  if (u.x === x && u.y === y) { u.moved = true; u.moveDist = 0; return; }
+  u.from = [u.x, u.y]; let p = path || [[u.x, u.y], [x, y]];
+  // a hidden pit on the way stops the march there
+  let trap = null;
+  if (B.map.traps && u.side === 'atk') for (let i = 1; i < p.length; i++) { const k = `${p[i][0]},${p[i][1]}`; if (B.map.traps.has(k) && !unitAt(B, p[i][0], p[i][1])) { trap = k; p = p.slice(0, i + 1); [x, y] = p[i]; break; } }
   if (x !== u.x) u.dir = x > u.x ? 1 : -1;
-  u.x = x; u.y = y; u.moved = true;
+  u.x = x; u.y = y; u.moved = true; u.moveDist = p.length - 1;
   ev(B, { t: 'move', u, path: p });
+  if (trap) { B.map.traps.delete(trap); (B.map.sprung = B.map.sprung || new Set()).add(trap); const n = Math.min(u.hp - 1, Math.round(u.s.hp * 0.15)); u.hp -= n; u.st.stop = Math.max(u.st.stop || 0, 1); ev(B, { t: 'trap', u, n }); }
+  takeChest(B, u);
+}
+// a chest (or a village's hidden cache) on this tile goes to the player's side
+export function takeChest(B, u) {
+  if (u.side !== playerSide(B) || !B.map.chests) return;
+  const c = B.map.chests.find((ch) => !ch.taken && ch.x === u.x && ch.y === u.y);
+  if (!c) return;
+  c.taken = true; B.loot.push(c.item); ev(B, { t: 'chest', u, item: c.item, hidden: !!c.hidden });
 }
 // undo a move (before acting)
 export function undoMove(B, u) { if (!u.from || u.acted) return false; u.x = u.from[0]; u.y = u.from[1]; u.from = null; u.moved = false; return true; }
@@ -119,26 +148,34 @@ export function attackTiles(B, u, fx = u.x, fy = u.y) {
   return out;
 }
 const bufK = (u, k) => 1 + (u.buf[k] ? u.buf[k][0] : 0);
+// the best command aura among friends standing next to u
+function auraOf(B, u, k) { let best = 0; for (const o of B.units) if (alive(o) && o !== u && o.side === u.side && o.s.fx && o.s.fx[k] && md(o.x, o.y, u.x, u.y) === 1) best = Math.max(best, o.s.fx[k]); return best / 100; }
 const tAt = (B, u) => tileAt(B.map, u.x, u.y).t;
 // the expected exchange: damage, hit, crit and double-strike chances, and the counter
 export function forecast(B, a, d) {
   const one = (x, y, counterHit) => {
     const ta = tAt(B, x), td = tAt(B, y);
-    const wall = y.wallBonus && ['town', 'gate', 'castle', 'camp'].includes(td) ? y.wallBonus : 0;
-    const atk = x.s.atk * bufK(x, 'atk') * apt(x.s.move, ta), def = y.s.def * bufK(y, 'def') * apt(y.s.move, td) * (1 + TERRAIN[td].def / 100 + wall);
+    const xf = x.s.fx || {}, yf = y.s.fx || {}, fort = ['town', 'gate', 'castle', 'camp'].includes(td);
+    const wall = y.wallBonus && (fort || y.structure) ? y.wallBonus : 0;
+    let terr = TERRAIN[td].def / 100; if (terr > 0 && xf.pierce) terr *= 1 - xf.pierce / 100;
+    const atk = x.s.atk * bufK(x, 'atk') * apt(x.s.move, ta) * (1 + auraOf(B, x, 'aura')), def = y.s.def * bufK(y, 'def') * apt(y.s.move, td) * (1 + terr + wall + (fort && yf.wallGuard ? yf.wallGuard / 100 : 0)) * (1 + auraOf(B, y, 'guardAura'));
     let dmg = (atk - def / 2) * 4 + (x.o.lv - y.o.lv) * 5 + 20;
     dmg *= counter(x.s.kind, y.s.kind);
-    if (x.s.line === 'siege' && ['castle', 'gate', 'camp', 'town', 'fence'].includes(td)) dmg *= 1.4;
-    if (counterHit) dmg *= 0.75;
+    if (x.s.line === 'siege' && (['castle', 'gate', 'camp', 'town', 'fence'].includes(td) || y.structure)) dmg *= y.structure ? 1.6 : 1.4;
+    if (xf['vs_' + y.s.kind]) dmg *= 1 + xf['vs_' + y.s.kind] / 100;
+    if (xf.siege && (fort || y.structure)) dmg *= 1 + xf.siege / 100;
+    if (!counterHit && xf.charge && (x.moveDist || 0) >= 3) dmg *= 1 + xf.charge / 100;
+    if (counterHit) dmg *= 0.75 * (1 + (xf.counterUp || 0) / 100);
     dmg = Math.max(10, Math.round(dmg));
-    const hit = y.st.conf || y.st.stop ? 100 : clamp(Math.round(90 + (x.s.agi * bufK(x, 'agi') - y.s.agi * bufK(y, 'agi')) * 0.5), 60, 100);
-    const crit = clamp(Math.round(5 + (x.s.mor - y.s.mor) * 0.3 + (x.s.line === 'brawl' ? 10 : 0) + (x.commander ? 3 : 0)), 3, 35);
-    const dbl = counterHit ? 0 : clamp(Math.round((x.s.agi - y.s.agi) * 0.6 - 5 + (x.s.line === 'brawl' ? 15 : 0) + (x.s.line === 'cav' && x.s.tier === 2 ? 8 : 0)), 0, 40);
+    const hit = y.st.conf || y.st.stop || y.structure ? 100 : clamp(Math.round(90 + (x.s.agi * bufK(x, 'agi') - y.s.agi * bufK(y, 'agi')) * 0.5 + (xf.hit || 0) - (yf.evade || 0)), 50, 100);
+    const crit = yf.critGuard || y.structure ? 0 : clamp(Math.round(5 + (x.s.mor - y.s.mor) * 0.3 + (x.s.line === 'brawl' ? 10 : 0) + (x.commander ? 3 : 0) + (xf.crit || 0)), 3, 50);
+    const dbl = counterHit || x.structure ? 0 : clamp(Math.round((x.s.agi - y.s.agi) * 0.6 - 5 + (x.s.line === 'brawl' ? 15 : 0) + (x.s.line === 'cav' && x.s.tier === 2 ? 8 : 0) + (xf.dbl || 0)), 0, 55);
     return { dmg, hit, crit, dbl };
   };
   const f = one(a, d, false);
-  const canCounter = !d.st.conf && inRange(d, d.x, d.y, a.x, a.y) && !(d.s.line === 'siege' && d.s.r[0] > 1 && md(a.x, a.y, d.x, d.y) < 2);
+  const canCounter = !d.st.conf && !(a.s.fx || {}).noCounter && inRange(d, d.x, d.y, a.x, a.y) && !(d.s.line === 'siege' && d.s.r[0] > 1 && md(a.x, a.y, d.x, d.y) < 2);
   f.counter = canCounter ? one(d, a, true) : null;
+  f.first = !!(f.counter && (d.s.fx || {}).firstStrike);
   return f;
 }
 export function attack(B, a, d) {
@@ -146,16 +183,24 @@ export function attack(B, a, d) {
   if (d.x !== a.x) a.dir = d.x > a.x ? 1 : -1;
   const strike = (x, y, F, kind) => {
     if (!alive(x) || !alive(y)) return;
+    const xf = x.s.fx || {}, yf = y.s.fx || {};
     const miss = B.rnd() * 100 >= F.hit, crit = !miss && B.rnd() * 100 < F.crit;
-    const dmg = miss ? 0 : Math.min(y.hp, Math.round(F.dmg * (crit ? 1.5 : 1) * (0.95 + B.rnd() * 0.1)));
+    let dmg = miss ? 0 : Math.min(y.hp, Math.round(F.dmg * (crit ? 1.5 : 1) * (0.95 + B.rnd() * 0.1)));
+    let stand = false;
+    if (dmg >= y.hp && yf.lastStand && !y.standUsed) { dmg = y.hp - 1; y.standUsed = true; stand = true; }
     y.hp -= dmg;
-    ev(B, { t: 'atk', a: x, d: y, dmg, miss, crit, kind });
+    const e = ev(B, { t: 'atk', a: x, d: y, dmg, miss, crit, kind, stand });
+    if (dmg && xf.drain && x.hp < x.s.hp) { e.drain = Math.min(x.s.hp - x.hp, Math.round(dmg * xf.drain / 100)); x.hp += e.drain; }
+    if (dmg && yf.thorns && md(x.x, x.y, y.x, y.y) === 1) { e.thorns = Math.min(x.hp - 1, Math.round(dmg * yf.thorns / 100)); x.hp -= e.thorns; }
     gainFrom(B, x, y, dmg, kind === 'counter' ? 0.5 : 1);
-    if (y.hp <= 0) defeat(B, y, x);
+    if (y.hp <= 0) { defeat(B, y, x); if (xf.rally && x.hp < x.s.hp) { const n = Math.min(x.s.hp - x.hp, Math.round(x.s.hp * xf.rally / 100)); x.hp += n; ev(B, { t: 'heal', u: x, n, why: 'rally' }); } }
   };
-  strike(a, d, f, 'atk');
-  if (alive(d) && f.dbl && B.rnd() * 100 < f.dbl) strike(a, d, f, 'double');
-  if (alive(d) && alive(a) && f.counter) strike(d, a, f.counter, 'counter');
+  if (f.first) { strike(d, a, f.counter, 'counter'); strike(a, d, f, 'atk'); if (alive(d) && f.dbl && B.rnd() * 100 < f.dbl) strike(a, d, f, 'double'); }
+  else {
+    strike(a, d, f, 'atk');
+    if (alive(d) && f.dbl && B.rnd() * 100 < f.dbl) strike(a, d, f, 'double');
+    if (alive(d) && alive(a) && f.counter) strike(d, a, f.counter, 'counter');
+  }
   a.acted = true;
   checkEnd(B);
 }
@@ -168,6 +213,7 @@ function defeat(B, u, by) {
 function gainFrom(B, x, y, dmg, k) { if (!dmg) return; giveExp(B, x, Math.round(clamp(8 + (y.o.lv - x.o.lv) * 2, 2, 24) * k)); }
 export function giveExp(B, u, n) {
   if (!n || u.side !== playerSide(B)) return;
+  if (u.s.fx && u.s.fx.expUp) n = Math.round(n * (1 + u.s.fx.expUp / 100));
   B.exp[u.o.id] = (B.exp[u.o.id] || 0) + n;
   const before = u.s.hp, t0 = u.s.tier, ups = gainExp(u.o, n);
   if (ups.length) {
@@ -189,7 +235,7 @@ export function terrainOk(B, u, sid, x, y) {
   if (k === 'rock') return !!T.rock || !!TERRAIN[tileAt(B.map, u.x, u.y).t].rock;
   return true;
 }
-export const stratCost = (u, sid) => STRATS[sid].mp;
+export const stratCost = (u, sid) => Math.max(1, Math.ceil(STRATS[sid].mp * (1 - ((u.s.fx || {}).mpSave || 0) / 100)));
 export function canCast(B, u, sid) { return !u.st.seal && u.mp >= stratCost(u, sid); }
 // tiles you may aim this strategy at (centre on a unit of the right side)
 export function stratTargets(B, u, sid, fx = u.x, fy = u.y) {
@@ -205,7 +251,8 @@ export function stratTargets(B, u, sid, fx = u.x, fy = u.y) {
 }
 export function stratForecast(B, u, sid, t) {
   const S = STRATS[sid];
-  if (S.kind === 'heal') return { heal: Math.round(u.s.spi * bufK(u, 'spi') * S.p * 3 + 80 + u.o.lv * 4) };
+  const uf = u.s.fx || {};
+  if (S.kind === 'heal') return { heal: Math.round((u.s.spi * bufK(u, 'spi') * S.p * 3 + 80 + u.o.lv * 4) * (1 + (uf.healUp || 0) / 100)) };
   if (HELP_KINDS.has(S.kind)) return { hit: 100 };
   const dspi = t.s.spi * bufK(t, 'spi');
   if (DMG_KINDS.has(S.kind)) {
@@ -213,10 +260,12 @@ export function stratForecast(B, u, sid, t) {
     let dmg = (u.s.spi * bufK(u, 'spi') * S.p - dspi * 0.45) * 3.6 + (u.o.lv - t.o.lv) * 4 + 30;
     if (S.kind === 'fire' && T.burn) dmg *= T.burn;
     if (S.kind === 'water' && T.wet) dmg *= 1.15;
+    dmg *= 1 + (uf[S.kind] || 0) / 100;
     dmg *= 1 - (t.s.res || 0) / 100;
     return { dmg: Math.max(10, Math.round(dmg)), hit: clamp(Math.round(80 + (u.s.spi - dspi) * 0.6), 40, 100) };
   }
   // ailments and weakening
+  if (t.structure || (t.s.fx || {})['imm_' + S.kind]) return { hit: 0 };
   return { hit: clamp(Math.round(50 + (u.s.spi - dspi) * 1.0 + (S.p - 1) * 30 - (t.s.res || 0) / 2), 10, 95) };
 }
 export function cast(B, u, sid, x, y) {
@@ -275,6 +324,8 @@ export function plan(B, u) {
     // attackers want the keep
     if (u.side === 'atk' && B.map.siege && m.x === B.map.keep[0] && m.y === B.map.keep[1]) s += 200;
     if (u.hp < u.s.hp * 0.35 && near <= 2) s -= 8;
+    // the player's units on auto go for chests they can see
+    if (B.map.chests && u.side === playerSide(B) && B.map.chests.some((c) => !c.taken && !c.hidden && c.x === m.x && c.y === m.y)) s += 30;
     return s;
   };
   let best = { score: -1e9 };
@@ -297,7 +348,7 @@ export function plan(B, u) {
         consider(m, 'atk', d, null, v);
       }
       if (!u.st.seal) for (const sid of u.s.strats) {
-        const S = STRATS[sid]; if (u.mp < S.mp) continue;
+        const S = STRATS[sid]; if (u.mp < stratCost(u, sid)) continue;
         for (const [tx, ty] of stratTargets(B, u, sid, m.x, m.y)) {
           let v = 0;
           for (const [ax, ay] of areaOf(B, sid, tx, ty)) {

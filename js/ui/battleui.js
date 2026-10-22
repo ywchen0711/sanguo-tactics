@@ -7,6 +7,7 @@ import { portrait } from './sprites.js';
 import { nm } from './names.js';
 import { TERRAIN, STRATS, USABLES, AILMENTS, BUFF_NAMES, DMG_KINDS, HELP_KINDS, LINES, apt } from '../data/rules.js';
 import { itemDef } from '../core/officer.js';
+import { RARITY, fxText } from '../data/relics.js';
 import * as R from '../core/battle.js';
 import { sfx, music } from '../audio.js';
 
@@ -38,7 +39,10 @@ export async function runBattle(B, opts = {}) {
   ui.append(hud.top, hud.goal, hud.card, hud.tip, hud.cmd, hud.fc, hud.banner, hud.help);
   const goalText = () => {
     const mine = B.sides[me];
-    const g = me === 'atk' ? T(`勝利：擊敗敵軍主將、全滅敵軍或佔領城池　敗北：主將撤退或超過 ${B.limit} 回合`, `Win: defeat their commander, rout them, or take the keep · Lose: your commander falls, or ${B.limit} turns pass`)
+    const chests = B.map.chests ? B.map.chests.filter((c) => !c.taken && !c.hidden).length : 0;
+    const g = B.goal === 'rout' ? T(`勝利：全滅敵軍　敗北：主將撤退或超過 ${B.limit} 回合${chests ? `　寶箱 ${chests}` : ''}`, `Win: rout them all · Lose: your commander falls or ${B.limit} turns pass${chests ? ` · chests ${chests}` : ''}`)
+      : B.goal === 'leader' ? T(`勝利：擊敗敵將　敗北：主將撤退或超過 ${B.limit} 回合${chests ? `　寶箱 ${chests}` : ''}`, `Win: defeat their leader · Lose: your commander falls or ${B.limit} turns pass${chests ? ` · chests ${chests}` : ''}`)
+      : me === 'atk' ? T(`勝利：擊敗敵軍主將、全滅敵軍或佔領城池　敗北：主將撤退或超過 ${B.limit} 回合`, `Win: defeat their commander, rout them, or take the keep · Lose: your commander falls, or ${B.limit} turns pass`)
       : T(`勝利：擊退敵軍主將或守住 ${B.limit} 回合　敗北：主將撤退或城池被佔領`, `Win: drive off their commander or hold for ${B.limit} turns · Lose: your commander falls or the keep is taken`);
     clear(hud.goal).append(el('b', {}, T(`第 ${B.turn}/${B.limit} 回合`, `Turn ${B.turn}/${B.limit}`)), el('span', { class: 'dim small' }, '　' + g));
     void mine;
@@ -94,7 +98,7 @@ export async function runBattle(B, opts = {}) {
     const sts = Object.keys(u.st).map((k) => el('span', { class: 'tag', style: { color: AILMENTS[k][2], borderColor: AILMENTS[k][2] } }, T(AILMENTS[k])));
     clear(hud.card).append(
       el('div', { class: 'head' }, pc, el('div', { style: { flex: 1, minWidth: 0 } },
-        el('div', { class: 'nm', style: { color: u.side === 'atk' ? 'var(--blue)' : 'var(--red)' } }, nm(u.o.name), u.commander ? el('span', { class: 'tag', style: { marginLeft: '6px', color: 'var(--gold)', borderColor: 'var(--gold)' } }, T('主將', 'Cmdr')) : null),
+        el('div', { class: 'nm', style: { color: u.side === me ? 'var(--blue)' : 'var(--red)' } }, nm(u.o.name), u.commander ? el('span', { class: 'tag', style: { marginLeft: '6px', color: 'var(--gold)', borderColor: 'var(--gold)' } }, T('主將', 'Cmdr')) : null),
         el('div', { class: 'small dim' }, `${T(u.s.cls)} · Lv ${u.o.lv}${u.side === me ? ` · EXP ${u.o.exp || 0}` : ''}`))),
       el('div', { class: 'row small', style: { justifyContent: 'space-between', marginTop: '4px' } }, el('span', {}, `${T('兵力', 'Troops')} ${u.hp}/${u.s.hp}`), el('span', { class: 'dim' }, `${T('策略', 'MP')} ${u.mp}/${u.s.mp}`)),
       bar(u.hp, u.s.hp, u.hp / u.s.hp > 0.5 ? '#5ad06a' : u.hp / u.s.hp > 0.25 ? '#e0c040' : '#e05a4a'), el('div', { style: { height: '3px' } }), bar(u.mp, u.s.mp || 1, '#4a8aff'),
@@ -120,12 +124,13 @@ export async function runBattle(B, opts = {}) {
     const s = u.s, pc = el('canvas', { width: 32, height: 32, class: 'face' }); pc.getContext('2d').drawImage(portrait(u.o, B.sides[u.side].color), 0, 0);
     const tile = B.map.tiles[u.y * B.map.w + u.x].t;
     const sec = (title, ...body) => el('div', { style: { marginTop: '10px' } }, el('div', { class: 'title small sect' }, title), ...body);
-    const eq = ['w', 'a', 'x'].map((k) => { const it = u.o.eq && u.o.eq[k] && itemDef(u.o.eq[k]); return el('div', { class: 'small' }, el('span', { class: 'tag' }, T(...{ w: ['武器', 'Weapon'], a: ['防具', 'Armour'], x: ['輔助', 'Extra'] }[k])), ' ', it ? T(it.name) : '—', it ? el('span', { class: 'dim' }, ' ' + gearText(it)) : null); });
+    const eq = u.structure ? [el('div', { class: 'small dim' }, T('城牆上的箭樓：敵人進入射程時自動射擊，不會移動；攻城兵器對它特別有效。', 'A tower on the walls: shoots whoever comes in range, never moves; siege engines wreck it.'))]
+      : ['w', 'a', 'x'].map((k) => { const it = u.o.eq && u.o.eq[k] && itemDef(u.o.eq[k]); const col = it && it.rarity ? RARITY[it.rarity].col : it && it.famous ? '#ffc840' : null; return el('div', { class: 'small' }, el('span', { class: 'tag' }, T(...{ w: ['武器', 'Weapon'], a: ['防具', 'Armour'], x: ['輔助', 'Extra'] }[k])), ' ', it ? el('b', { style: { color: col || 'inherit' } }, T(it.name)) : '—', it ? el('span', { class: 'dim' }, ' ' + gearText(it)) : null, it && it.fx ? el('div', { style: { color: 'var(--gold2)', paddingLeft: '52px' } }, fxText(it).map((d) => T(...d)).join(T('；', '; '))) : null); });
     const strats = s.strats.length ? s.strats.map((id) => { const S = STRATS[id]; return el('div', { class: 'small' }, el('span', { style: { color: 'var(--gold2)' } }, T(S.name)), el('span', { class: 'dim' }, `　MP ${S.mp} · ${T('射程', 'range')} ${S.r}${S.a ? T(` · 範圍 ${S.a}`, ` · area ${S.a}`) : ''} · ${stratKind(S)}`)); }) : [el('div', { class: 'small dim' }, '—')];
     const L = LINES[s.line];
     return el('div', {},
       el('div', { class: 'row', style: { gap: '12px', alignItems: 'center', flexWrap: 'nowrap' } }, pc, el('div', { style: { flex: 1, minWidth: 0 } },
-        el('div', { class: 'row', style: { gap: '6px' } }, el('span', { class: 'title', style: { fontSize: '20px' } }, nm(u.o.name)), el('span', { class: 'tag', style: { color: u.side === 'atk' ? 'var(--blue)' : 'var(--red)', borderColor: 'currentColor' } }, u.side === me ? T('我軍', 'Ours') : T('敵軍', 'Enemy')), u.commander ? el('span', { class: 'tag', style: { color: 'var(--gold)', borderColor: 'var(--gold)' } }, T('主將', 'Commander')) : null),
+        el('div', { class: 'row', style: { gap: '6px' } }, el('span', { class: 'title', style: { fontSize: '20px' } }, nm(u.o.name)), el('span', { class: 'tag', style: { color: u.side === me ? 'var(--blue)' : 'var(--red)', borderColor: 'currentColor' } }, u.side === me ? T('我軍', 'Ours') : T('敵軍', 'Enemy')), u.commander ? el('span', { class: 'tag', style: { color: 'var(--gold)', borderColor: 'var(--gold)' } }, T('主將', 'Commander')) : null),
         el('div', { class: 'small dim' }, `${T(s.cls)} · Lv ${u.o.lv}${u.side === me ? ` · EXP ${u.o.exp || 0}/100` : ''} · ${T('移動', 'Move')} ${s.mov} · ${T('射程', 'Range')} ${s.r[0] === s.r[1] ? s.r[0] : s.r.join('-')}`),
         el('div', { class: 'row small', style: { gap: '12px', marginTop: '3px' } }, el('span', {}, `${T('兵力', 'Troops')} ${u.hp}/${s.hp}`), el('span', {}, `${T('策略值', 'MP')} ${u.mp}/${s.mp}`)),
         bar(u.hp, s.hp, '#5ad06a'), el('div', { style: { height: '3px' } }), bar(u.mp, s.mp || 1, '#4a8aff'))),
@@ -186,6 +191,9 @@ export async function runBattle(B, opts = {}) {
       else view.effect('slash', d.x, d.y, 0.25);
       if (e.miss) { view.text(d.x, d.y, 'MISS', '#c8d8ff'); sfx('ok'); }
       else { d.flash = 0.3; sfx('hit'); if (e.crit) { view.text(d.x, d.y - 0.35, T('必殺！', 'Critical!'), '#ff5a3a', true); sfx('hurt'); } view.text(d.x, d.y, `-${e.dmg}`, e.crit ? '#ffd040' : '#ffffff', e.crit); }
+      if (e.stand) view.text(d.x, d.y - 0.6, T('不屈！', 'Undying!'), '#ffe070', true);
+      if (e.drain) view.text(a.x, a.y, `+${e.drain}`, '#8aff9a');
+      if (e.thorns) { a.flash = 0.2; view.text(a.x, a.y, `-${e.thorns}`, '#ff9a7a'); }
       await W(e.crit ? 650 : 480); return;
     }
     if (t === 'retreat') {
@@ -217,6 +225,8 @@ export async function runBattle(B, opts = {}) {
     if (t === 'heal') { view.text(e.u.x, e.u.y, `+${e.n}`, '#8aff9a'); await W(160); return; }
     if (t === 'dmg') { view.text(e.u.x, e.u.y, `-${e.n}`, '#c08aff'); await W(160); return; }
     if (t === 'cured') return;
+    if (t === 'trap') { view.ensure(e.u.x, e.u.y); e.u.flash = 0.4; sfx('hurt'); view.effect('rock', e.u.x, e.u.y, 0.6); view.text(e.u.x, e.u.y - 0.3, T('陷坑！', 'Pit trap!'), '#ffb070', true); view.text(e.u.x, e.u.y, `-${e.n}`, '#ffffff'); await W(700); return; }
+    if (t === 'chest') { const it = USABLES[e.item] || itemDef(e.item), col = it.rarity ? RARITY[it.rarity].col : '#ffe070'; sfx('treasure'); view.effect('buff', e.u.x, e.u.y, 0.8); view.text(e.u.x, e.u.y - 0.3, e.hidden ? T('發現隱藏的物資！', 'A hidden cache!') : T('打開寶箱！', 'Chest!'), '#ffe070', true, 1.4); toast(T(`獲得「${it.name[0]}」${it.rarity ? `（${RARITY[it.rarity].name[0]}）` : ''}`, `Found ${it.name[1]}${it.rarity ? ` (${RARITY[it.rarity].name[1]})` : ''}`), 2200); void col; goalText(); await W(800); return; }
     if (t === 'lvup') { view.text(e.u.x, e.u.y - 0.4, 'LEVEL UP', '#ffe070', true, 1.4); sfx('levelup'); if (e.promoted) await banner(T(`${nm(e.u.o.name)} 晉升為 ${e.promoted[0]}！`, `${nm(e.u.o.name)} is promoted to ${e.promoted[1]}!`), 1300); else await W(400); return; }
     if (t === 'end') return;
   }
@@ -367,8 +377,8 @@ export async function runBattle(B, opts = {}) {
     if (commander && B.turn === 1) view.centerOn(commander.x, commander.y, false);
     for (;;) {
       if (B.over) return;
-      // confused units act on their own
-      for (const u of B.units.filter((x) => R.alive(x) && x.side === me && !x.done && x.st.conf)) { R.runPlan(B, u, R.plan(B, u)); await play(); }
+      // confused units and the towers on our walls act on their own
+      for (const u of B.units.filter((x) => R.alive(x) && x.side === me && !x.done && (x.st.conf || x.structure))) { R.runPlan(B, u, R.plan(B, u)); await play(); }
       const left = B.units.filter((u) => R.alive(u) && u.side === me && !u.done);
       if (!left.length || B.over) return;
       if (auto) { await aiRun(me); continue; }

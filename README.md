@@ -13,6 +13,11 @@ like *Cao Cao Den* (曹操傳) — phase-based tactics on a grid, where your who
   when they do, command the defence yourself or leave it to the garrison.
 - Captured officers can be recruited, released or executed. Hold all 45 cities to unite the realm.
 
+## Training missions, treasures and defences
+- **Missions** every month: bandit hunts, Yellow Turban remnants, the southern tribes, raiders, a champion's trial and treasure hunts. Up to six officers at full strength, for experience, gold, chests on the field and a guaranteed treasure.
+- **Five hundred treasures** in five rarities, each with its own name and mix of over forty powers: regen, lifesteal, thorns, pre-emptive strikes, overwhelm (no counters), undying, pierce, long shot, charge, command and bulwark auras, element boosts, economy, resolve, immunities, terrain-walking, experience and fortune.
+- **Defences** that make a city hard to take: arrow towers on the walls that shoot on their own and must be torn down, barricades that stop cavalry, hidden pit traps, and moats crossed only at the gates. Every warlord builds them.
+
 ## The battles
 - A siege map generated from where the city stands: the central plains, Hebei, the frontier, Liang's deserts, Shu's mountains, Jiangnan's marshes, or the Great River with its bridges.
 - Ten unit lines with three tiers each (promotion at Lv15 and Lv30): infantry, cavalry, archers, horse archers, strategists, taoists, martial artists, bandits, siege engines and lords.
