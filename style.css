@@ -91,6 +91,13 @@ tr.off td { opacity: 0.6; }
 .editor .row select { max-width: 60vw; }
 .editor input, .editor select { -webkit-user-select: text; user-select: text; touch-action: auto; }
 
+/* troops for each officer on the deploy screen */
+.alloc { display: flex; flex-direction: column; gap: 2px; }
+.allocrow { display: flex; align-items: center; gap: 8px; padding: 2px 8px 6px 44px; }
+.allocrow input[type=range] { flex: 1; min-width: 0; }
+.allocrow input[type=number] { width: 82px; background: #1c120c; color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; font: inherit; -webkit-user-select: text; user-select: text; }
+.allocbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; align-items: center; margin: 6px 0; }
+
 /* missions */
 .stars { color: #ffc840; letter-spacing: 1px; }
 .item.legend { border-color: #ffc840; background: linear-gradient(90deg, rgba(255, 200, 64, 0.16), rgba(255, 255, 255, 0.03)); }

@@ -215,7 +215,7 @@ export async function runCampaign(G, { save, quit }) {
     }
     const picked = await deploy(src, T(`出征 ${cityName(target.name)}`, `March on ${cityName(target.name)}`), target);
     if (!picked) return;
-    await fight({ af: G.player, from: src.id, to: target.id, atkOfficers: picked });
+    await fight({ af: G.player, from: src.id, to: target.id, atkOfficers: picked, atkTroops: picked.troops });
   }
   // choose who marches (up to ten); shows the troops each would lead
   function deploy(c, title, enemyCity, cap = C.MAX_DEPLOY) {
@@ -224,16 +224,45 @@ export async function runCampaign(G, { save, quit }) {
       const offs = C.officersIn(G, c).filter((o) => !o.done || (enemyCity == null && !mission)).sort((a, b) => C.quality(b) - C.quality(a));
       if (!offs.length) { toast(T('沒有可以出陣的武將', 'No one free to march')); return resolve(null); }
       const sel = new Set(offs.filter((o) => !(C.isLord(G, o) && offs.length > 3)).slice(0, Math.min(cap, offs.length)).map((o) => o.id));
+      // troops each officer leads: the player sets them; by default, the city's soldiers shared out by each one's maximum
+      const pool = c.troops, MIN = 100, alloc = {};
+      const maxOf = (o) => battleStats(o).hp, chosen = () => offs.filter((o) => sel.has(o.id));
+      const total = () => chosen().reduce((n, o) => n + (alloc[o.id] || 0), 0);
+      const share = (frac) => { const L = chosen(), need = L.reduce((n, o) => n + maxOf(o), 0), k = need ? Math.min(1, pool * frac / need) : 0; for (const o of L) alloc[o.id] = Math.max(MIN, Math.floor(maxOf(o) * k / 10) * 10); fit(); };
+      const fillInOrder = () => { let left = pool; for (const o of chosen()) { alloc[o.id] = Math.max(MIN, Math.min(maxOf(o), left)); left -= alloc[o.id]; } fit(); };
+      const fit = () => { let over = total() - pool; for (const o of chosen().reverse()) { if (over <= 0) break; const cut = Math.min(over, (alloc[o.id] || 0) - MIN); if (cut > 0) { alloc[o.id] -= cut; over -= cut; } } };
+      share(enemyCity ? 0.85 : 1);
       const box = el('div', {});
+      let sumLine = null;
+      const updateSum = () => { if (sumLine) { const t = total(); sumLine.textContent = T(`出陣兵力 ${t} / 城內 ${pool}　留守 ${pool - t}`, `${t} of ${pool} troops march · ${pool - t} stay home`); sumLine.style.color = t > pool ? 'var(--red)' : ''; } };
       const render = () => {
-        const chosen = offs.filter((o) => sel.has(o.id)), mus = C.muster(G, c, chosen, enemyCity ? Math.round(c.troops * 0.85) : c.troops), byId = Object.fromEntries(mus.map((m) => [m.o.id, m.troops]));
         const foes = enemyCity ? (C.officersIn(G, enemyCity).length ? C.officersIn(G, enemyCity) : null) : null;
+        sumLine = el('b', {});
+        const row = (o) => {
+          const s2 = battleStats(o), on = sel.has(o.id), mx = maxOf(o);
+          const head = el('div', { class: 'item' + (on ? ' on' : ''), onclick: () => { if (on) { sel.delete(o.id); delete alloc[o.id]; } else if (sel.size < cap) { sel.add(o.id); alloc[o.id] = Math.max(MIN, Math.min(mx, pool - total())); } render(); } },
+            el('span', { class: 'check' }, on ? '☑' : '☐'), face(o, G.factions[G.player].color, 28),
+            el('div', { class: 'grow' }, el('div', {}, nm(o.name), C.isLord(G, o) ? el('span', { class: 'tag lord' }, T('君主', 'Lord')) : null), el('div', { class: 'small dim' }, `${T(s2.cls)} Lv${o.lv} · ${T('移動', 'Mv')}${s2.mov} · ${T('上限', 'max')} ${mx}`)),
+            mission ? el('span', { class: 'small' }, `${mx}`) : null);
+          if (mission || !on) return head;
+          // the troop slider and number for a chosen officer
+          const num = el('input', { type: 'number', min: MIN, max: mx, step: 10, value: alloc[o.id] });
+          const rng = el('input', { type: 'range', min: MIN, max: mx, step: 10, value: alloc[o.id] });
+          const set = (v) => { v = Math.max(MIN, Math.min(mx, Math.round(+v || 0))); const others = total() - (alloc[o.id] || 0); v = Math.min(v, Math.max(MIN, pool - others)); alloc[o.id] = v; num.value = v; rng.value = v; updateSum(); };
+          num.onchange = (e) => set(e.target.value); rng.oninput = (e) => set(e.target.value);
+          for (const x of [num, rng]) { x.onclick = (e) => e.stopPropagation(); x.onpointerdown = (e) => e.stopPropagation(); }
+          return el('div', { class: 'alloc' }, head, el('div', { class: 'allocrow' }, el('span', { class: 'small dim' }, T('帶兵', 'Troops')), rng, num, el('button', { class: 'btn small', onclick: (e) => { e.stopPropagation(); set(mx); } }, T('補滿', 'Max'))));
+        };
         clear(box).append(el('div', { class: 'title' }, title),
           enemyCity ? el('div', { class: 'small dim' }, T(`敵方：${fname(G, enemyCity.owner)} · 兵 ${enemyCity.troops} · 武將 ${foes ? foes.length : 0}${foes ? '' : '（守備兵）'} · 城防 ${enemyCity.wall}`, `Enemy: ${fname(G, enemyCity.owner)} · ${enemyCity.troops} troops · ${foes ? foes.length : 0} officers${foes ? '' : ' (garrison)'} · walls ${enemyCity.wall}`)) : null,
-          el('div', { class: 'small', style: { margin: '4px 0' } }, mission ? T(`選擇出戰武將（最多 ${cap} 人）：已選 ${sel.size} 人 · 鍛鍊任務以滿兵力出戰，不消耗城內士兵`, `Choose up to ${cap}: ${sel.size} chosen · missions go at full strength and use no city troops`) : T(`選擇出陣武將（最多 ${cap} 人）：已選 ${sel.size} 人 · 出陣兵力 ${mus.reduce((s, m) => s + m.troops, 0)} / 城內 ${c.troops}`, `Choose up to ${cap}: ${sel.size} chosen · ${mus.reduce((s, m) => s + m.troops, 0)} of ${c.troops} troops march`)),
-          el('div', { class: 'list scroll', style: { maxHeight: '52vh' } }, offs.map((o) => { const s = battleStats(o), on = sel.has(o.id); return el('div', { class: 'item' + (on ? ' on' : ''), onclick: () => { if (on) sel.delete(o.id); else if (sel.size < cap) sel.add(o.id); render(); } }, el('span', { class: 'check' }, on ? '☑' : '☐'), face(o, G.factions[G.player].color, 28), el('div', { class: 'grow' }, el('div', {}, nm(o.name), C.isLord(G, o) ? el('span', { class: 'tag lord' }, T('君主', 'Lord')) : null), el('div', { class: 'small dim' }, `${T(s.cls)} Lv${o.lv} · ${T('移動', 'Mv')}${s.mov}`)), el('span', { class: 'small' }, mission ? `${s.hp}` : on ? `${byId[o.id] || 0}/${s.hp}` : `—/${s.hp}`)); })),
-          el('div', { class: 'small dim', style: { marginTop: '4px' } }, T('提示：君主出陣時就是主將，君主撤退就會戰敗。不帶君主時，第一位武將擔任主將。', 'Tip: a lord who marches is the commander, and losing them loses the battle. Otherwise the first officer leads.')),
-          el('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '8px' } }, el('button', { class: 'btn', onclick: () => { close(); resolve(null); } }, T('取消', 'Cancel')), el('button', { class: 'btn primary', disabled: !sel.size || null, onclick: () => { close(); resolve(offs.filter((o) => sel.has(o.id))); } }, mission ? T('出發！', 'Set out!') : enemyCity ? T('出陣！', 'March!') : T('迎擊！', 'Defend!'))));
+          mission ? el('div', { class: 'small', style: { margin: '4px 0' } }, T(`選擇出戰武將（最多 ${cap} 人）：已選 ${sel.size} 人 · 鍛鍊任務以滿兵力出戰，不消耗城內士兵`, `Choose up to ${cap}: ${sel.size} chosen · missions go at full strength and use no city troops`))
+            : el('div', { class: 'allocbar' }, el('div', { class: 'small' }, T(`選擇出陣武將（最多 ${cap} 人）：已選 ${sel.size} 人　`, `Choose up to ${cap}: ${sel.size} chosen · `), sumLine),
+              el('div', { class: 'row' }, el('button', { class: 'btn small', onclick: () => { share(enemyCity ? 0.85 : 1); render(); } }, T('按比例分配', 'Share out')), el('button', { class: 'btn small', onclick: () => { fillInOrder(); render(); } }, T('依序補滿', 'Fill in order')), el('button', { class: 'btn small', onclick: () => { for (const o of chosen()) alloc[o.id] = MIN; render(); } }, T('全部最少', 'All minimum')))),
+          el('div', { class: 'list scroll', style: { maxHeight: '50vh' } }, offs.map(row)),
+          el('div', { class: 'small dim', style: { marginTop: '4px' } }, mission ? T('提示：君主出陣時就是主將，君主撤退就會戰敗。', 'Tip: a lord who marches is the commander; losing them loses the battle.') : T('提示：每位武將最多帶到自己的兵力上限，最少 100。沒帶出去的士兵留在城裡。君主出陣時就是主將，君主撤退就會戰敗。', 'Tip: each officer leads up to their own maximum (at least 100). Soldiers not sent stay in the city. A lord who marches is the commander; losing them loses the battle.')),
+          el('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '8px' } }, el('button', { class: 'btn', onclick: () => { close(); resolve(null); } }, T('取消', 'Cancel')),
+            el('button', { class: 'btn primary', disabled: !sel.size || null, onclick: () => { if (!mission && total() > pool) return toast(T('出陣兵力超過城內兵力', 'More troops than the city has')); close(); const L = chosen(); L.troops = mission ? null : Object.fromEntries(L.map((o) => [o.id, alloc[o.id]])); resolve(L); } }, mission ? T('出發！', 'Set out!') : enemyCity ? T('出陣！', 'March!') : T('迎擊！', 'Defend!'))));
+        updateSum();
       };
       render(); const close = sheet(box, { onBack: () => resolve(null), outside: false });
     });
@@ -296,7 +325,7 @@ export async function runCampaign(G, { save, quit }) {
       const src = G.cities[t.from], dst = G.cities[t.to];
       if (dst.owner !== G.player) continue;
       const r = await modal(el('div', {}, el('div', { class: 'title', style: { color: 'var(--red)' } }, T('敵軍來襲！', 'Enemy attack!')), el('div', {}, T(`${fname(G, t.af)}軍（武將 ${t.atkOfficers.length} 人，兵 ${Math.round(src.troops * 0.85)}）從${cityName(src.name)}攻向${cityName(dst.name)}！`, `${fname(G, t.af)}'s army (${t.atkOfficers.length} officers, ${Math.round(src.troops * 0.85)} troops) marches from ${cityName(src.name)} on ${cityName(dst.name)}!`)), el('div', { class: 'small dim' }, T(`${cityName(dst.name)}：兵 ${dst.troops} · 武將 ${C.officersIn(G, dst).length}`, `${cityName(dst.name)}: ${dst.troops} troops · ${C.officersIn(G, dst).length} officers`))), [T('親自迎擊', 'Command the defence'), T('委任守將', 'Leave it to the garrison')]);
-      if (r === 0 && C.officersIn(G, dst).length) { const picked = await deploy(dst, T(`迎擊：${cityName(dst.name)}`, `Defend ${cityName(dst.name)}`), null); await fight({ ...t, defOfficers: picked || undefined }, { defending: true }); }
+      if (r === 0 && C.officersIn(G, dst).length) { const picked = await deploy(dst, T(`迎擊：${cityName(dst.name)}`, `Defend ${cityName(dst.name)}`), null); await fight({ ...t, defOfficers: picked || undefined, defTroops: picked ? picked.troops : undefined }, { defending: true }); }
       else await fight(t, { auto: true });
       if (G.over) return;
     }

@@ -203,7 +203,9 @@ export function unequip(G, o, slot) { const id = o.eq[slot]; if (!id) return; G.
 
 // ---------------------------------------------------------------- war
 // the armies for a battle: who marches, with how many soldiers each
-export function muster(G, c, officers, pool = c.troops) {
+export function muster(G, c, officers, pool = c.troops, chosen = null) {
+  // the player's own choice of how many each leads
+  if (chosen) return officers.slice(0, MAX_DEPLOY).map((o) => ({ o, troops: Math.max(100, Math.min(maxTroops(o), chosen[o.id] ?? 100)) }));
   const list = officers.slice(0, MAX_DEPLOY), out = []; let left = pool;
   const need = list.map((o) => maxTroops(o)), total = sum(need, (x) => x), k = total ? Math.min(1, pool / total) : 0;
   list.forEach((o, i) => { const n = Math.max(100, Math.floor(need[i] * k / 10) * 10); out.push({ o, troops: Math.min(n, left) || 100 }); left -= Math.min(n, left); });
@@ -222,11 +224,11 @@ export function militia(G, c) {
 // the battlefield for an attack on city c
 export function fieldFor(G, c, seed) { return makeField({ theme: themeFor(c), seed, siege: true, w: 24, h: 18, defense: c.fac || {} }); }
 // set up a battle: attackers from city `from` (faction af), defenders in city `to`
-export function battleSetup(G, { af, from, to, atkOfficers, defOfficers, seed = G.seed + G.t * 13 + to }) {
+export function battleSetup(G, { af, from, to, atkOfficers, defOfficers, atkTroops, defTroops, seed = G.seed + G.t * 13 + to }) {
   const src = G.cities[from], dst = G.cities[to], df = dst.owner;
   const defs = defOfficers && defOfficers.length ? defOfficers : (officersIn(G, dst).length ? officersIn(G, dst).sort((a, b) => quality(b) - quality(a)).slice(0, MAX_DEPLOY) : militia(G, dst));
-  const atkM = muster(G, src, atkOfficers, Math.round(src.troops * 0.85));
-  const defM = muster(G, dst, defs, dst.troops || 1500);
+  const atkM = muster(G, src, atkOfficers, Math.round(src.troops * 0.85), atkTroops);
+  const defM = muster(G, dst, defs, dst.troops || 1500, defOfficers && defOfficers.length ? defTroops : null);
   const map = fieldFor(G, dst, seed);
   const pl = G.player;
   const defLeadIdx = Math.max(0, defM.findIndex((m) => isLord(G, m.o)));

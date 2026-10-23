@@ -52,6 +52,16 @@ try {
           for (let i = 0; i < 6 && document.querySelector('.modal'); i++) { const b = document.querySelector('.modal .btn.primary') || document.querySelector('.modal .btn'); b.click(); await wait(600); }
           report(`battle edit over=${B.over} why=${B.why} cities=${G.cities.filter((c) => c.owner === G.player).length}`);
         }
+        else if (stage === 21) {
+          click('出征'); await wait(400); const m = document.querySelector('.modal'); if (m && !document.querySelector('.modal .check')) { m.querySelector('.btn').click(); await wait(400); }
+          const num = document.querySelector('.allocrow input[type=number]'); const name = num.closest('.alloc').querySelector('.grow div').textContent;
+          num.value = 300; num.dispatchEvent(new Event('change')); await wait(200);
+          const sum = document.querySelector('.allocbar b').textContent, sliders = document.querySelectorAll('.allocrow').length;
+          if (q.get('keep')) { report(`deploy sliders=${sliders} sum="${sum}"`); throw 0; }
+          click('出陣'); await wait(400); click('開戰'); await wait(1500);
+          const B = window.__B, u = B.units.find((x) => x.side === 'atk' && name.startsWith(x.o.name));
+          report(`alloc sliders=${sliders} "${sum}" ${u.o.name} start=${u.start} hp=${u.hp}/${u.s.hp}`);
+        }
         else if (stage === 18) { G.missions[5].kind = 'legend'; G.missions[5].stars = 5; click('任務'); await wait(500); report(`board missions=${document.querySelectorAll('.modal .item.mission').length} drill=${document.querySelectorAll('.modal .item.drill .btn').length}`); }
         else if (stage === 16 || stage === 17) {
           // the training ground (16) or an escort mission forced onto the board (17)
