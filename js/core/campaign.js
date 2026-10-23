@@ -280,17 +280,19 @@ export function settle(G, B) {
     if (df) for (const o of officersIn(G, dst)) {
       if (!refuge.length || r() < 0.3) { capture(G, o, af); out.captured.push(o); } else { o.city = refuge[Math.floor(r() * refuge.length)].id; out.fled.push(o); }
     }
-    dst.owner = af; dst.troops = atkLeft; src.gold += loot.gold; dst.gold += 0; out.loot = loot;
+    dst.owner = af; dst.troops = Math.min(capOf(dst), atkLeft); src.gold += loot.gold; dst.gold += 0; out.loot = loot;
     for (const u of A.filter((x) => real(x))) { u.o.city = alive(u) ? dst.id : src.id; u.o.merit += alive(u) ? 2 : 0; }
     // the winners' wounded go home; the rest hold the city
     if (!A.some((u) => alive(u) && real(u))) for (const u of A.filter(real)) u.o.city = dst.id;
     note(G, [`${G.factions[af].name}軍攻下了${dst.name}！`, `${G.factions[af].name}'s army takes ${dst.name}!`], af);
     if (df) checkFall(G, df, af);
   } else {
-    dst.troops = defLeft + Math.round(dst.troops * 0);
+    // the defenders who fought come back to the barracks, alongside those who never left them
+    const defSent = sum(D.filter((u) => !u.structure), (u) => u.start);
+    dst.troops = Math.min(capOf(dst), defLeft + Math.max(0, dst.troops - defSent));
     // routed attackers: some taken prisoner by the defenders
     for (const u of A.filter(real)) { u.o.city = src.id; if (u.gone && df && r() < 0.2 && !isLord(G, u.o)) { capture(G, u.o, df); out.captured.push(u.o); } }
-    src.troops += Math.round(atkLeft * 0.9);
+    src.troops = Math.min(capOf(src), src.troops + Math.round(atkLeft * 0.9));
     note(G, [`${dst.name}守住了${G.factions[af].name}軍的進攻。`, `${dst.name} holds against ${G.factions[af].name}.`], df);
   }
   // what the player's units picked up on the field

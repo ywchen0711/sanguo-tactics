@@ -104,5 +104,15 @@ for (const sc of SCENARIOS) {
   const plain = battleStats(o); const relic = RELIC_LIST.find((x) => x.slot === 'a' && x.fx.hpPct); o.eq.a = relic.id; const withIt = battleStats(o);
   ok('500 treasures with powers', RELIC_LIST.length === 500 && new Set(RELIC_LIST.map((x) => x.name[0])).size === 500 && withIt.hp > plain.hp && withIt.fx.hpPct, `${relic.name[0]}: HP ${plain.hp} → ${withIt.hp}`);
 }
+// a city that holds keeps the soldiers who stayed home
+{
+  const G = C.newGame({ scenario: '190', player: 'cao', seed: 3 });
+  const src = G.cities.find((c) => c.name === '陳留'), dst = G.cities.find((c) => c.name === '洛陽');
+  dst.troops = 24000; dst.fac = { tower: 6, fence: 6, trap: 6, moat: true };
+  const B = C.battleSetup(G, { af: 'cao', from: src.id, to: dst.id, atkOfficers: C.officersIn(G, src).slice(0, 2) });
+  const sent = B.units.filter((u) => u.side === 'def' && !u.structure).reduce((n, u) => n + u.start, 0);
+  C.autoBattle(B); C.settle(G, B);
+  ok('defenders who stay home are kept', B.over !== 'def' || dst.troops >= 24000 - sent, `${B.over} · sent ${sent} of 24000 · city now ${dst.troops}`);
+}
 console.log(fails ? `test: ${fails} FAILED` : 'test: all passed');
 process.exit(fails ? 1 : 0);
