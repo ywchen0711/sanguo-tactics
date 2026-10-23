@@ -1,5 +1,6 @@
 // The map of the realm: land and sea, the great rivers, the roads, and the forty-five cities in their owners' colours.
 import { cityName } from './names.js';
+import { objectSprite } from './sprites.js';
 
 const COAST = [[96, 0], [97, 10], [92, 18], [88, 27], [93, 33], [90, 40], [89, 47], [94, 56], [97, 63], [96, 72], [94, 80], [86, 88], [70, 95], [55, 98], [42, 104], [100, 104], [100, 0]];
 const RIVERS = [
@@ -33,34 +34,47 @@ export class MapView {
   background() {
     const { s, X, Y } = this.frame(), W = this.cv.width, H = this.cv.height;
     const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
-    // parchment land
-    const land = g.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, Math.max(W, H) * 0.7); land.addColorStop(0, '#e6d6ac'); land.addColorStop(1, '#c8b282');
-    g.fillStyle = '#1e2c3a'; g.fillRect(0, 0, W, H);
-    g.fillStyle = land; g.fillRect(X(0), Y(-2), 100 * s, 106 * s);
-    // paper grain
-    for (let i = 0; i < 2600; i++) { g.fillStyle = `rgba(90,60,30,${Math.random() * 0.06})`; g.fillRect(X(Math.random() * 100), Y(Math.random() * 104 - 2), s * 0.4, s * 0.4); }
-    // the sea
-    g.beginPath(); COAST.forEach(([x, y], i) => (i ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)))); g.closePath();
-    const sea = g.createLinearGradient(X(85), 0, X(100), 0); sea.addColorStop(0, '#5a8aa8'); sea.addColorStop(1, '#3a6a8a'); g.fillStyle = sea; g.fill();
-    g.strokeStyle = 'rgba(60,40,20,.55)'; g.lineWidth = Math.max(1.5, s * 0.35); g.stroke();
-    // waves
-    g.strokeStyle = 'rgba(220,240,255,.25)'; g.lineWidth = Math.max(1, s * 0.15);
-    for (let i = 0; i < 40; i++) { const x = 90 + Math.random() * 10, y = Math.random() * 100; if (x < 92 && y < 60) continue; g.beginPath(); g.arc(X(x), Y(y), s * 0.8, Math.PI * 1.1, Math.PI * 1.9); g.stroke(); }
-    // desert stipple
-    g.fillStyle = 'rgba(200,160,80,.35)'; for (const [x, y] of DESERT) for (let i = 0; i < 60; i++) g.fillRect(X(x + (Math.random() - 0.5) * 10), Y(y + (Math.random() - 0.5) * 8), s * 0.3, s * 0.3);
-    // mountains: little ink peaks
-    for (const [x, y] of MOUNTAINS) for (let k = 0; k < 3; k++) {
-      const mx = X(x + k * 2.2 - 2), my = Y(y + (k % 2) * 1.2), h = s * (2.2 + (k % 2)), w = s * 1.8;
-      g.fillStyle = 'rgba(120,96,60,.55)'; g.beginPath(); g.moveTo(mx - w, my); g.lineTo(mx, my - h); g.lineTo(mx + w, my); g.closePath(); g.fill();
-      g.fillStyle = 'rgba(80,60,36,.6)'; g.beginPath(); g.moveTo(mx, my - h); g.lineTo(mx + w, my); g.lineTo(mx + w * 0.2, my); g.closePath(); g.fill();
-    }
-    // rivers
+    g.imageSmoothingEnabled = false;
+    const rr = ((seed) => () => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return seed / 4294967296; })(20261022);
+    g.fillStyle = '#2c2418'; g.fillRect(0, 0, W, H);
+    // the sea: deep teal, pixel waves
+    g.fillStyle = '#2f6e88'; g.fillRect(X(0), Y(-2), 100 * s, 106 * s);
+    // the land: olive grass, speckled
+    const land = new Path2D(); land.rect(X(0), Y(-2), 100 * s, 106 * s);
+    const sea = new Path2D(); COAST.forEach(([x, y], i) => (i ? sea.lineTo(X(x), Y(y)) : sea.moveTo(X(x), Y(y)))); sea.closePath();
+    g.save(); g.clip(land); g.fillStyle = '#7f8c46'; g.fill(land);
+    const px = Math.max(2, Math.round(s * 0.45));
+    for (let i = 0; i < 9000; i++) { const x = X(rr() * 100), y = Y(rr() * 106 - 2); g.fillStyle = ['#6e7c3a', '#8e9a52', '#74823e', '#9aa45c'][i % 4]; g.fillRect(Math.round(x / px) * px, Math.round(y / px) * px, px, px); }
+    // dry steppe and desert in the north-west
+    for (const [x, y] of DESERT) for (let i = 0; i < 160; i++) { const dx = (rr() - 0.5) * 14, dy = (rr() - 0.5) * 10; g.fillStyle = rr() < 0.5 ? '#cdb47a' : '#d8c088'; g.fillRect(Math.round(X(x + dx) / px) * px, Math.round(Y(y + dy) / px) * px, px * 2, px); }
+    // the sea, drawn over the land along the coast, with a sandy rim
+    g.fillStyle = '#2f6e88'; g.fill(sea);
+    g.strokeStyle = '#d8c08a'; g.lineWidth = Math.max(3, s * 0.9); g.stroke(sea);
+    g.strokeStyle = '#3e2a16'; g.lineWidth = Math.max(1.5, s * 0.25); g.stroke(sea);
+    g.restore();
+    g.save(); g.clip(sea);
+    for (let i = 0; i < 260; i++) { const x = X(80 + rr() * 22), y = Y(rr() * 106 - 2); g.fillStyle = 'rgba(200,240,250,.45)'; g.fillRect(Math.round(x / px) * px, Math.round(y / px) * px, px * 3, px); }
+    g.restore();
+    // rivers: blue with a light middle
     for (const r of RIVERS) {
-      g.strokeStyle = r.col; g.lineWidth = Math.max(2, s * (r.name[0] === '長江' || r.name[0] === '黃河' ? 0.9 : 0.55)); g.lineCap = 'round'; g.lineJoin = 'round';
-      g.beginPath(); r.pts.forEach(([x, y], i) => (i ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)))); g.stroke();
+      const big = r.name[0] === '長江' || r.name[0] === '黃河';
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      g.strokeStyle = '#2e5a7a'; g.lineWidth = Math.max(4, s * (big ? 1.5 : 1)); g.beginPath(); r.pts.forEach(([x, y], i) => (i ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)))); g.stroke();
+      g.strokeStyle = r.name[0] === '黃河' ? '#c4a860' : '#4a92c8'; g.lineWidth = Math.max(2.5, s * (big ? 1.05 : 0.65)); g.stroke();
+      g.strokeStyle = 'rgba(220,240,255,.35)'; g.lineWidth = Math.max(1, s * 0.25); g.stroke();
     }
-    // a compass and border
-    g.strokeStyle = 'rgba(90,60,30,.6)'; g.lineWidth = Math.max(2, s * 0.4); g.strokeRect(X(0), Y(-2), 100 * s, 106 * s);
+    // mountains and forests, as little pixel sprites
+    const put = (kind, x, y, k = 1, variant = 0) => { const o = objectSprite(kind, variant), sc = Math.max(1, s * 0.11 * k); g.drawImage(o.c, Math.round(X(x) - o.ax * sc), Math.round(Y(y) - o.ay * sc), Math.round(o.w * sc), Math.round(o.h * sc)); };
+    const trees = [];
+    for (let i = 0; i < 260; i++) { const x = 4 + rr() * 86, y = 2 + rr() * 98; if (DESERT.some(([dx, dy]) => Math.hypot(dx - x, dy - y) < 8) || MOUNTAINS.some(([mx, my]) => Math.hypot(mx - x, my - y) < 3)) continue; trees.push([x, y, rr()]); }
+    const things = [...trees.map(([x, y, v]) => ({ y, f: () => put(v < 0.35 ? 'pine' : 'tree', x, y, 0.9, Math.floor(v * 3)) })), ...MOUNTAINS.flatMap(([x, y]) => [[-2.2, 0.6], [0, 0], [2.2, 0.8]].map(([dx, dy]) => ({ y: y + dy, f: () => put('peak', x + dx, y + dy, 1.1) })))];
+    g.save(); g.clip(land); for (const t of things.sort((a1, b1) => a1.y - b1.y)) { const [lx, ly] = [t.y, 0]; void lx; void ly; t.f(); } g.restore();
+    g.save(); g.fillStyle = '#2f6e88'; g.fill(sea); g.strokeStyle = '#d8c08a'; g.lineWidth = Math.max(3, s * 0.9); g.stroke(sea); g.strokeStyle = '#3e2a16'; g.lineWidth = Math.max(1.5, s * 0.25); g.stroke(sea); g.clip(sea);
+    for (let i = 0; i < 260; i++) { const x = X(80 + rr() * 22), y = Y(rr() * 106 - 2); g.fillStyle = 'rgba(200,240,250,.45)'; g.fillRect(Math.round(x / px) * px, Math.round(y / px) * px, px * 3, px); }
+    g.restore();
+    // a chunky wooden frame
+    g.strokeStyle = '#2e1a0c'; g.lineWidth = Math.max(4, s * 0.8); g.strokeRect(X(0), Y(-2), 100 * s, 106 * s);
+    g.strokeStyle = '#b8834c'; g.lineWidth = Math.max(2, s * 0.3); g.strokeRect(X(0) + s * 0.5, Y(-2) + s * 0.5, 100 * s - s, 106 * s - s);
     this.bg = c; this.bgFor = `${W}x${H}|${JSON.stringify(this.inset || {})}`;
   }
   // each faction's lands, tinted in its colour: every bit of land belongs to its nearest city
@@ -82,7 +96,7 @@ export class MapView {
       const o = own(i); if (!o) continue;
       const [r, gg, b] = G.factions[o].color.match(/\w\w/g).map((h) => parseInt(h, 16)), x = i % 100;
       const edge = (x > 0 && own(i - 1) !== o) || (x < 99 && own(i + 1) !== o) || (i >= 100 && own(i - 100) !== o) || (i < 100 * 103 && own(i + 100) !== o);
-      img.data.set(edge ? [r * 0.55, gg * 0.55, b * 0.55, 170] : [r, gg, b, o === G.player ? 92 : 64], i * 4);
+      img.data.set(edge ? [r * 0.6, gg * 0.6, b * 0.6, 190] : [r, gg, b, o === G.player ? 84 : 56], i * 4);
     }
     g.putImageData(img, 0, 0);
     this.terr = c; this.terrSig = sig; return c;
@@ -92,13 +106,15 @@ export class MapView {
     const g = this.g, { s, X, Y } = this.frame();
     if (!this.bg || this.bgFor !== `${this.cv.width}x${this.cv.height}|${JSON.stringify(this.inset || {})}`) this.background();
     g.drawImage(this.bg, 0, 0);
-    g.imageSmoothingEnabled = true; g.drawImage(this.territory(G), X(0), Y(-2), 100 * s, 104 * s);
-    // river names
-    g.font = `${Math.round(s * 1.5)}px "Noto Serif TC", serif`; g.fillStyle = 'rgba(40,70,110,.55)';
-    for (const r of RIVERS.slice(0, 2)) { const [x, y] = r.pts[Math.floor(r.pts.length / 2)]; g.fillText(r.name[0], X(x) + s, Y(y) + s * 2.2); }
-    // roads
-    g.setLineDash([s * 0.6, s * 0.5]); g.lineWidth = Math.max(1, s * 0.22);
-    for (const c of G.cities) for (const j of c.adj) if (j > c.id) { const d = G.cities[j]; g.strokeStyle = this.marks.has(c.id) && this.marks.has(d.id) ? 'rgba(255,90,40,.9)' : 'rgba(110,80,40,.5)'; g.beginPath(); g.moveTo(X(c.x), Y(c.y)); g.lineTo(X(d.x), Y(d.y)); g.stroke(); }
+    g.imageSmoothingEnabled = false; g.drawImage(this.territory(G), X(0), Y(-2), 100 * s, 104 * s);
+    // roads: dirt tracks with a dark edge
+    g.lineCap = 'round';
+    for (const c of G.cities) for (const j of c.adj) if (j > c.id) {
+      const d = G.cities[j], hot = this.marks.has(c.id) && this.marks.has(d.id);
+      g.beginPath(); g.moveTo(X(c.x), Y(c.y)); g.lineTo(X(d.x), Y(d.y));
+      g.setLineDash([]); g.strokeStyle = 'rgba(62,42,22,.55)'; g.lineWidth = Math.max(3, s * 0.55); g.stroke();
+      g.setLineDash([s * 0.7, s * 0.35]); g.strokeStyle = hot ? '#ff7a4a' : '#c8a46a'; g.lineWidth = Math.max(1.5, s * 0.3); g.stroke();
+    }
     g.setLineDash([]);
     // cities
     for (const c of G.cities) {
@@ -106,21 +122,15 @@ export class MapView {
       const mark = this.marks.get(c.id);
       if (mark) { g.strokeStyle = mark; g.lineWidth = Math.max(2, s * 0.4); g.beginPath(); g.arc(x, y, r * 1.9 + Math.sin(this.time * 5) * s * 0.2, 0, Math.PI * 2); g.stroke(); }
       if (this.sel === c.id) { g.fillStyle = 'rgba(255,240,160,.35)'; g.beginPath(); g.arc(x, y, r * 2.2, 0, Math.PI * 2); g.fill(); }
-      // a walled fort: stone walls with corner towers, a hall roof, and a banner in the owner's colour
-      g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(x - r + s * 0.25, y - r * 0.6 + s * 0.35, r * 2, r * 1.5);
-      g.fillStyle = '#b8b0a0'; g.fillRect(x - r, y - r * 0.6, r * 2, r * 1.5);
-      g.fillStyle = '#d8d0c0'; g.fillRect(x - r, y - r * 0.6, r * 2, r * 0.3);
-      g.fillStyle = '#8a8070'; for (const [tx, ty] of [[-1, -0.6], [1, -0.6], [-1, 0.9], [1, 0.9]]) g.fillRect(x + tx * r - r * 0.28, y + ty * r - r * 0.28, r * 0.56, r * 0.56);
-      g.fillStyle = col; g.fillRect(x - r * 0.62, y - r * 0.25, r * 1.24, r * 0.95);
-      g.fillStyle = '#3a2418'; g.beginPath(); g.moveTo(x - r * 0.85, y - r * 0.25); g.lineTo(x, y - r * 1.05); g.lineTo(x + r * 0.85, y - r * 0.25); g.closePath(); g.fill();
-      g.fillStyle = '#5a3a1a'; g.fillRect(x + r * 0.95, y - r * 1.9, Math.max(1, s * 0.18), r * 1.4);
-      g.fillStyle = col; g.fillRect(x + r * 0.95 + Math.max(1, s * 0.18), y - r * 1.9, r * 0.8, r * 0.5);
-      g.strokeStyle = c.owner === G.player ? '#ffd860' : 'rgba(30,20,10,.8)'; g.lineWidth = Math.max(1, s * (c.owner === G.player ? 0.35 : 0.2)); g.strokeRect(x - r, y - r * 0.6, r * 2, r * 1.5);
-      // name
-      const fs = Math.round(Math.max(10 * this.dpr, s * 1.45));
-      g.font = `bold ${fs}px "Noto Serif TC", "Noto Sans TC", serif`; g.textAlign = 'center';
-      g.lineWidth = Math.max(2, fs / 5); g.strokeStyle = 'rgba(245,232,200,.9)'; g.strokeText(cityName(c.name), x, y + r * 0.8 + fs);
-      g.fillStyle = c.owner === G.player ? '#7a1a10' : '#2a1a10'; g.fillText(cityName(c.name), x, y + r * 0.8 + fs);
+      // a little walled town flying its owner's flag
+      const o = objectSprite('citytown', 0, col), sc = Math.max(1, s * (0.1 + c.size * 0.025));
+      g.imageSmoothingEnabled = false; g.drawImage(o.c, Math.round(x - o.w * sc / 2), Math.round(y - o.h * sc * 0.75), Math.round(o.w * sc), Math.round(o.h * sc));
+      if (c.owner === G.player) { g.strokeStyle = '#ffe27a'; g.lineWidth = Math.max(2, s * 0.3); g.beginPath(); g.ellipse(x, y + o.h * sc * 0.22, o.w * sc * 0.62, o.h * sc * 0.2, 0, 0, Math.PI * 2); g.stroke(); }
+      // its name, bold white with a dark outline
+      const fs = Math.round(Math.max(10 * this.dpr, s * 1.3));
+      g.font = `900 ${fs}px "Noto Sans TC", sans-serif`; g.textAlign = 'center'; g.lineJoin = 'round';
+      g.lineWidth = Math.max(3, fs / 4); g.strokeStyle = '#2e1a0c'; g.strokeText(cityName(c.name), x, y + o.h * sc * 0.25 + fs);
+      g.fillStyle = c.owner === G.player ? '#ffe27a' : '#ffffff'; g.fillText(cityName(c.name), x, y + o.h * sc * 0.25 + fs);
       g.textAlign = 'start';
     }
   }

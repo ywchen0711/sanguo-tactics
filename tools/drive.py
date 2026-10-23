@@ -129,7 +129,7 @@ try {
             if (stage === 6) { if (q.get('zoom')) { const v = window.__view, u = B.units.find((x) => x.side === 'atk'); v.zoomBy(+q.get('zoom')); v.centerOn(u.x + 3, u.y, false); await wait(300); } report(`battle units=${B.units.length} side=${B.side} theme=${B.map.theme}`); }
             else if (stage === 7 || stage === 8 || stage === 11) {
               const v = window.__view, cv = document.getElementById('view'), r = cv.getBoundingClientRect();
-              const tap = (x, y) => { const px = r.left + ((x + 0.5) * v.ts - v.camX) / v.dpr, py = r.top + ((y + 0.5) * v.ts - v.camY) / v.dpr; cv.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: px, clientY: py })); };
+              const tap = (x, y) => { const [qx, qy] = v.toCss(x, y), px = r.left + qx, py = r.top + qy; cv.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: px, clientY: py })); };
               if (stage === 11) { const f = B.units.find((u) => u.side === 'def'); v.centerOn(f.x, f.y, false); await wait(100); tap(f.x, f.y); await wait(200); tap(f.x, f.y); await wait(500); report('info ' + (document.querySelector('.modal') ? 'open' : 'closed')); }
               else {
                 const u = B.units.find((x) => x.side === 'atk' && (stage === 8 ? x.s.strats.length : true));

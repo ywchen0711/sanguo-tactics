@@ -36,6 +36,7 @@ export async function runBattle(B, opts = {}) {
   const autoBtn = btn(T('委任', 'Auto'), () => { auto = !auto; autoBtn.classList.toggle('primary', auto); if (auto && cancelPick) cancelPick('auto'); });
   const endBtn = btn(T('結束回合', 'End turn'), () => { if (cancelPick) cancelPick('end'); });
   const editBtn = btn(T('⚙ 修改', '⚙ Edit'), () => { if (!opts.G) return; openEditor(opts.G, { B, onChange: () => { goalText(); if (view.active) showCard(view.active); if (B.over && cancelPick) cancelPick('end'); } }); });
+  editBtn.classList.add('edit'); endBtn.classList.add('war');
   hud.top.append(endBtn, autoBtn, editBtn, btn(T('全軍', 'Army'), () => armyList()), btn('＋', () => view.zoomBy(1.2)), btn('－', () => view.zoomBy(1 / 1.2)),
     btn(T('速度', 'Speed'), (e) => { FAST = !FAST; e.currentTarget.classList.toggle('primary', FAST); }));
   ui.append(hud.top, hud.goal, hud.card, hud.tip, hud.cmd, hud.fc, hud.banner, hud.help);

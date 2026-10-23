@@ -45,7 +45,7 @@ export async function runCampaign(G, { save, quit }) {
     clear(top).append(
       el('span', { class: 'seal', style: { background: f.color } }, nm(f.name).slice(0, EN ? 3 : 1)),
       el('b', { class: 'date' }, T(`${G.year}年 ${G.month}月`, `${['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][G.month]} ${G.year}`)),
-      el('span', { class: 'small' }, `${T('城', 'Cities')} ${mine.length}/${G.cities.length} · ${T('武將', 'Officers')} ${offs.length} · ${T('金', 'Gold')} ${gold} · ${T('兵', 'Troops')} ${troops}`),
+      el('span', { class: 'stat' }, el('span', { class: 'coin' }), `${gold}`), el('span', { class: 'stat' }, `${T('城', 'Cities')} ${mine.length}/${G.cities.length}`), el('span', { class: 'stat' }, `${T('武將', 'Officers')} ${offs.length}`), el('span', { class: 'stat' }, `${T('兵', 'Troops')} ${troops}`),
       el('span', { class: 'grow' }),
       el('button', { class: 'btn mission', onclick: () => missionBoard() }, T(`任務 ${G.missions.length}`, `Missions ${G.missions.length}`)),
       el('button', { class: 'btn', onclick: () => diplomacy() }, T('外交', 'Diplomacy')),
@@ -54,9 +54,11 @@ export async function runCampaign(G, { save, quit }) {
       el('button', { class: 'btn', onclick: () => officerList() }, T('武將', 'Officers')),
       el('button', { class: 'btn', onclick: () => bagSheet() }, T('道具', 'Items')),
       el('button', { class: 'btn', onclick: () => chronicle() }, T('記錄', 'Chronicle')),
-      el('button', { class: 'btn', title: T('隨時調整任何數值', 'Change any value at any time'), onclick: () => openEditor(G, { onChange: () => drawSide(), onClose: () => { save(); drawSide(); } }) }, T('⚙ 修改', '⚙ Edit')),
+      el('button', { class: 'btn edit', title: T('隨時調整任何數值', 'Change any value at any time'), onclick: () => openEditor(G, { onChange: () => drawSide(), onClose: () => { save(); drawSide(); } }) }, T('⚙ 修改', '⚙ Edit')),
       el('button', { class: 'btn', onclick: () => sysMenu() }, T('選單', 'Menu')),
       el('button', { class: 'btn primary', onclick: () => endMonth() }, T('結束月份 ▶', 'End month ▶')));
+    // the bar may wrap onto two rows: keep the map and the city panel below it
+    requestAnimationFrame(() => { const b = top.getBoundingClientRect().bottom; if (innerWidth > 760) side.style.top = `${Math.round(b + 8)}px`; const want = Math.round(b + 4); if (map.inset && innerWidth > 760 && Math.abs((map.inset.t || 0) - want) > 2) { map.inset.t = want; map.bg = null; map.terr = null; } });
     const recent = G.log.slice(-3).reverse();
     clear(chron).append(recent.map((l) => el('div', {}, el('span', { class: 'dim' }, `${l.y}.${l.m} `), T(...l.text))));
   }
