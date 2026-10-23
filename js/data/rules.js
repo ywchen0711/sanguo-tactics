@@ -57,7 +57,7 @@ export const LINES = {
 export const LINE_ORDER = ['inf', 'cav', 'arch', 'hbow', 'strat', 'taoist', 'brawl', 'bandit', 'siege', 'lord'];
 export const tierOf = (lv) => (lv >= 30 ? 2 : lv >= 15 ? 1 : 0);
 export const PROMOTE = [15, 30];
-export const MAX_LV = 50;
+export const MAX_LV = 500;
 // the counter triangle: attacker kind vs defender kind → multiplier
 export function counter(a, d) {
   const beats = { cav: 'inf', inf: 'arch', arch: 'cav' };

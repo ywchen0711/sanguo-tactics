@@ -48,7 +48,7 @@ export function startLevel(o, extra = 0) {
 // attributes with gear bonuses
 export function attrs(o) {
   const a = { lead: o.lead, war: o.war, int: o.int, pol: o.pol, cha: o.cha };
-  for (const id of Object.values(o.eq || {})) { const it = id && itemDef(id); if (it && it.attr) for (const [k, v] of Object.entries(it.attr)) a[k] = Math.min(120, a[k] + v); }
+  for (const id of Object.values(o.eq || {})) { const it = id && itemDef(id); if (it && it.attr) for (const [k, v] of Object.entries(it.attr)) a[k] += v; }
   return a;
 }
 const grow = (base, lv, g) => base * (1 + (lv - 1) * 0.035 * GRADE[g]);
@@ -88,10 +88,21 @@ export function strategiesOf(o) {
   return out;
 }
 export const EXP_LV = 100;
+// each level up may raise the five attributes, with no ceiling: war, lead and int follow the line's
+// attack / defence / spirit grades, charisma its morale grade, politics a flat chance. The dice are the
+// officer's name and new level, so a reloaded save grows the same way.
+const ATTR_GRADE = [['war', 0], ['lead', 1], ['int', 2], ['cha', 4], ['pol', -1]];
+export function growAttrs(o) {
+  const L = LINES[o.line]; if (!L || !o.name) return;
+  for (const [k, gi] of ATTR_GRADE) {
+    const p = gi < 0 ? 0.22 : 0.3 * GRADE[L.g[gi]];
+    if (hash(`${o.name}|${o.lv}|${k}`) < p) o[k] = (o[k] || 0) + 1;
+  }
+}
 export function gainExp(o, n) {
   const ups = [];
   o.exp = (o.exp || 0) + n;
-  while (o.exp >= EXP_LV && o.lv < MAX_LV) { o.exp -= EXP_LV; o.lv++; ups.push(o.lv); }
+  while (o.exp >= EXP_LV && o.lv < MAX_LV) { o.exp -= EXP_LV; o.lv++; ups.push(o.lv); growAttrs(o); }
   if (o.lv >= MAX_LV) o.exp = 0;
   return ups;
 }

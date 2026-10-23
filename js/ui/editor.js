@@ -69,8 +69,8 @@ export function openEditor(G, { B = null, onChange = () => {}, onClose = () => {
     const o = G.officers[offId]; if (!o) return;
     const s = battleStats(o);
     body.append(el('div', { class: 'small dim' }, `${T(s.cls)} · ${T('兵力', 'Troops')} ${s.hp} · MP ${s.mp} · ${T('攻', 'ATK')} ${s.atk} ${T('防', 'DEF')} ${s.def} ${T('精', 'SPI')} ${s.spi} ${T('爆', 'AGI')} ${s.agi} ${T('士', 'MOR')} ${s.mor}`),
-      el('div', { class: 'edgrid' }, ATTR.map(([k, z, e]) => num(o, k, T(z, e), { max: 150, after: () => { changed(); render(); } })),
-        num(o, 'lv', T('等級', 'Level'), { min: 1, max: 50, after: () => { changed(); render(); } }), num(o, 'exp', 'EXP', { max: 99, after: changed }),
+      el('div', { class: 'edgrid' }, ATTR.map(([k, z, e]) => num(o, k, T(z, e), { max: 999999, after: () => { changed(); render(); } })),
+        num(o, 'lv', T('等級', 'Level'), { min: 1, max: 500, after: () => { changed(); render(); } }), num(o, 'exp', 'EXP', { max: 99, after: changed }),
         check(o, 'done', T('本月已行動', 'Busy this month'), changed)),
       pick(T('兵種', 'Unit line'), LINE_ORDER.map((k) => [k, T(LINES[k].names[tierOf(o.lv)])]), o.line, (v) => { o.line = v; changed(); render(); }),
       pick(T('身分', 'Status'), [['serving', T('仕官', 'Serving')], ['free', T('在野', 'Free')], ['hidden', T('未發現', 'Undiscovered')], ['captive', T('俘虜', 'Captive')], ['dead', T('死亡', 'Dead')]], o.status, (v) => {
@@ -119,9 +119,9 @@ export function openEditor(G, { B = null, onChange = () => {}, onClose = () => {
     const reStat = () => { const k = u.hp / u.s.hp, s = battleStats(u.o); u.s = s; u.hp = Math.max(1, Math.round(s.hp * k)); };
     body.append(pick(T('部隊', 'Unit'), units.map((x) => [String(x.id), `${x.side === mineSide ? T('我', 'Ours') : T('敵', 'Foe')}　${nm(x.o.name)}　${x.hp}/${x.s.hp}`]), String(unitId), (v) => { unitId = +v; render(); }),
       el('div', { class: 'edgrid' },
-        num(u, 'hp', T('兵力', 'Troops'), { min: 1, max: 99999, after: changed }), num(u.s, 'hp', T('兵力上限', 'Max troops'), { min: 1, max: 99999, after: changed }),
-        num(u, 'mp', T('策略值', 'MP'), { max: 9999, after: changed }), num(u.s, 'mp', T('策略值上限', 'Max MP'), { max: 9999, after: changed }),
-        ...[['atk', '攻擊', 'ATK'], ['def', '防禦', 'DEF'], ['spi', '精神', 'SPI'], ['agi', '爆發', 'AGI'], ['mor', '士氣', 'MOR']].map(([k, z, e]) => num(u.s, k, T(z, e), { max: 9999, after: changed })),
+        num(u, 'hp', T('兵力', 'Troops'), { min: 1, max: 9999999, after: changed }), num(u.s, 'hp', T('兵力上限', 'Max troops'), { min: 1, max: 9999999, after: changed }),
+        num(u, 'mp', T('策略值', 'MP'), { max: 999999, after: changed }), num(u.s, 'mp', T('策略值上限', 'Max MP'), { max: 999999, after: changed }),
+        ...[['atk', '攻擊', 'ATK'], ['def', '防禦', 'DEF'], ['spi', '精神', 'SPI'], ['agi', '爆發', 'AGI'], ['mor', '士氣', 'MOR']].map(([k, z, e]) => num(u.s, k, T(z, e), { max: 999999, after: changed })),
         num(u.s, 'mov', T('移動', 'Move'), { max: 20, after: changed }), num(u.s.r, 1, T('最大射程', 'Max range'), { min: 1, max: 10, after: changed }),
         num(u.o, 'lv', T('等級（重算數值）', 'Level (recalc)'), { min: 1, max: 50, after: () => { reStat(); changed(); render(); } }),
         check(u, 'done', T('已行動', 'Done'), changed), check(u, 'commander', T('主將', 'Commander'), changed)),

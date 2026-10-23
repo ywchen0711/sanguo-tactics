@@ -2,6 +2,7 @@
 import { STRATS, LEARN, LINES, TERRAIN, GEAR } from '../js/data/rules.js';
 import { SCENARIOS } from '../js/data/scenarios.js';
 import { battleStats, gainExp } from '../js/core/officer.js';
+import * as OF from '../js/core/officer.js';
 import { makeField, THEMES } from '../js/core/mapgen.js';
 import * as BT from '../js/core/battle.js';
 import * as C from '../js/core/campaign.js';
@@ -42,6 +43,21 @@ for (const sc of SCENARIOS) {
   ok(`scenario ${sc.id}: four years run`, !err && bad === 0, `${serving} officers serving at start · ${alive}/${Object.keys(G.factions).length} houses left · ${G.year}/${G.month} · ${bad} inconsistencies · ${Date.now() - t0} ms`);
 }
 
+// levels go to 500 and attributes keep growing; a battle between level-500 armies still ends
+{
+  const G = C.newGame({ scenario: '190', player: 'cao', seed: 9 });
+  const o = G.officers.find((x) => x.name === '關羽'), before = { war: o.war, lead: o.lead, int: o.int, lv: o.lv };
+  const s0 = OF.battleStats(o);
+  OF.gainExp(o, 100 * 600);
+  const s = OF.battleStats(o);
+  ok('levels reach 500 and attributes keep growing', o.lv === 500 && o.war > 100 && o.war > before.war && Number.isFinite(s.atk) && s.hp > s0.hp,
+    `Lv${before.lv}→${o.lv} · 武力 ${before.war}→${o.war} · 統率 ${before.lead}→${o.lead} · 智力 ${before.int}→${o.int} · ATK ${s0.atk}→${s.atk} · 兵力 ${s0.hp}→${s.hp}`);
+  const src = G.cities.find((c) => c.name === '陳留'), dst = G.cities.find((c) => c.name === '濮陽');
+  for (const x of [...C.officersIn(G, src), ...C.officersIn(G, dst)]) OF.gainExp(x, 100 * 600);
+  const B = C.battleSetup(G, { af: 'cao', from: src.id, to: dst.id, atkOfficers: C.officersIn(G, src) });
+  C.autoBattle(B);
+  ok('a battle of level-500 armies ends', !!B.over, `${B.why} on turn ${B.turn}`);
+}
 // 調度: a house sends officers to a city it has emptied, and never moves its lord
 {
   const G = C.newGame({ scenario: '190', player: 'cao', seed: 5 });
