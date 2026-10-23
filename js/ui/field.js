@@ -107,7 +107,7 @@ export class Field {
     const g = this.g, ts = this.ts, [sx, sy] = this.scr(u.ax, u.ay), B = this.B;
     if (u.gone) u.alpha = Math.max(0, u.alpha - dt * 1.5);
     g.globalAlpha = u.alpha;
-    const col = this.colors[u.side], tired = u.side === B.side && u.done && !B.over;
+    const col = u.color || this.colors[u.side], tired = u.side === B.side && u.done && !B.over;
     const frame = tired ? 0 : Math.floor(this.time * 2 + u.id * 0.37) % 2;
     // a shadow, and a ring in the army's colour under the feet
     if (!u.structure) {

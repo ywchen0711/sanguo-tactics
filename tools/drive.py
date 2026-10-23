@@ -62,6 +62,27 @@ try {
           const B = window.__B, u = B.units.find((x) => x.side === 'atk' && name.startsWith(x.o.name));
           report(`alloc sliders=${sliders} "${sum}" ${u.o.name} start=${u.start} hp=${u.hp}/${u.s.hp}`);
         }
+        else if (stage === 22) {
+          click('外交'); await wait(400);
+          const rows = [...document.querySelectorAll('.modal .item.diplo')];
+          const row = rows.find((r) => r.textContent.includes('接壤')) || rows[0], name = row.querySelector('b').textContent;
+          [...row.querySelectorAll('.btn')].find((b) => b.textContent === '停戰').click(); await wait(400);
+          const env = document.querySelectorAll('.modal')[1].querySelector('.item'); const chance = env.querySelector('b').textContent; env.click(); await wait(400);
+          const fid = Object.values(G.factions).find((f) => f.name === name || window.__sg && f.name === name).id;
+          if (q.get('keep')) { report(`diplo rows=${rows.length}`); throw 0; }
+          report(`diplo rows=${rows.length} with=${name} ${chance} pact=${JSON.stringify((G.pacts || {})[[G.player, fid].sort().join('|')] || null)} rel=${(G.rel || {})[[G.player, fid].sort().join('|')]}`);
+        }
+        else if (stage === 23) {
+          click('委任'); await wait(400);
+          click('全部委任'); await wait(200);
+          const boxes = [...document.querySelectorAll('.modal input[type=checkbox]')]; for (const b of boxes) if (!b.checked) { b.click(); await wait(150); }
+          const t0 = G.t; click('完成'); await wait(300);
+          click('▶ 自動'); await wait(+(q.get('ms') || 14000));
+          // answer anything that came up
+          for (let i = 0; i < 6 && document.querySelector('.modal'); i++) { const b = document.querySelector('.modal .btn.primary') || document.querySelector('.modal .btn'); b.click(); await wait(500); }
+          click('⏸ 停止'); await wait(300);
+          report(`auto months=${G.t - t0} auto=${JSON.stringify(G.auto)} cities=${G.cities.filter((c) => c.owner === G.player).length}`);
+        }
         else if (stage === 18) { G.missions[5].kind = 'legend'; G.missions[5].stars = 5; click('任務'); await wait(500); report(`board missions=${document.querySelectorAll('.modal .item.mission').length} drill=${document.querySelectorAll('.modal .item.drill .btn').length}`); }
         else if (stage === 16 || stage === 17) {
           // the training ground (16) or an escort mission forced onto the board (17)

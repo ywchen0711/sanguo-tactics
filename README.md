@@ -13,6 +13,10 @@ like *Cao Cao Den* (曹操傳) — phase-based tactics on a grid, where your who
   when they do, command the defence yourself or leave it to the garrison.
 - Captured officers can be recruited, released or executed. Hold all 45 cities to unite the realm.
 
+## Diplomacy and delegation
+- **Diplomacy:** relations between every pair of houses (from the scenario's history). Send envoys with gifts, or propose a truce (12 months) or an alliance (24 months); the chance depends on relations, the envoy's charisma and the balance of power. Houses with a pact never attack each other, allies send reinforcements into your battles, breaking a pact costs trust with everyone, and the AI makes its own pacts (and closes ranks against a player who grows too strong) and sends you proposals.
+- **Delegate to the computer:** choose cities whose orders the computer gives each month, let it march (steady or bold), defend automatically and answer envoys — and press Auto to let the months roll on by themselves.
+
 ## Training missions, treasures and defences
 - **Missions** — six every month from fourteen kinds: bandit hunts, Yellow Turban remnants, the southern tribes, raiders, river pirates, sorcerers, the Qiang, the Shanyue, a champion's trial, treasure hunts, holding a village against waves, escorting a supply wagon, and now and then a legendary general of old (Xiang Yu, Han Xin, Bai Qi…) who drops a legendary treasure. Up to six officers from any of your cities, at full strength, for experience (with a bonus for everyone who goes), gold, chests on the field and a guaranteed treasure.
 - **The Training Ground** is always open: spar at Easy, Even, Hard or Brutal for double experience.

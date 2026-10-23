@@ -49,6 +49,12 @@ export function addTower(B, side, x, y, lv) {
   const u = { id: B.uid++, o, side, x, y, s, hp: s.hp, mp: 0, st: {}, buf: {}, moved: false, acted: false, done: false, commander: false, ai: true, mode: 'tower', structure: true, dir: side === 'atk' ? 1 : -1, start: s.hp, kills: 0 };
   B.units.push(u); return u;
 }
+// a unit joining a battle already set up (allied reinforcements)
+export function addUnit(B, side, o, troops, x, y, extra = {}) {
+  const s = battleStats(o), spot = freeNear(B, x, y, { s }) || [x, y];
+  const u = { id: B.uid++, o, side, x: spot[0], y: spot[1], s, hp: Math.max(1, Math.min(s.hp, troops ?? s.hp)), mp: s.mp, st: {}, buf: {}, moved: false, acted: false, done: false, commander: false, ai: true, mode: 'attack', dir: side === 'atk' ? 1 : -1, start: Math.max(1, Math.min(s.hp, troops ?? s.hp)), kills: 0, ...extra };
+  B.units.push(u); return u;
+}
 export function startPhase(B, side) {
   B.side = side;
   ev(B, { t: 'phase', side, turn: B.turn });

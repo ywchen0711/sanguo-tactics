@@ -114,5 +114,37 @@ for (const sc of SCENARIOS) {
   C.autoBattle(B); C.settle(G, B);
   ok('defenders who stay home are kept', B.over !== 'def' || dst.troops >= 24000 - sent, `${B.over} · sent ${sent} of 24000 · city now ${dst.troops}`);
 }
+// diplomacy: a truce holds, allies help, and delegation runs the house
+{
+  const G = C.newGame({ scenario: '190', player: 'cao', seed: 21 });
+  const o = C.officersOf(G, 'cao').sort((a, b) => b.cha - a.cha)[0];
+  for (let k = 0; k < 20 && !C.pactOf(G, 'cao', 'liudai'); k++) { o.done = false; G.rel['cao|liudai'] = 80; C.envoy(G, o, 'liudai', 'truce'); }
+  const truce = C.pactOf(G, 'cao', 'liudai');
+  // every AI house at peace with everyone: nobody should attack across a pact
+  let broken = 0;
+  for (const f of Object.values(G.factions)) for (const g of Object.values(G.factions)) if (f.id < g.id) C.makePact(G, f.id, g.id, 'truce', 60);
+  const owners = G.cities.map((c) => c.owner);
+  for (let m = 0; m < 6; m++) C.endMonth(G, { autoPlayer: true });
+  G.cities.forEach((c, i) => { if (owners[i] && c.owner !== owners[i]) broken++; });
+  ok('truces hold: no one attacks a pact partner', !!truce && broken === 0, `truce until ${truce && truce.until} · ${broken} cities changed hands`);
+}
+{
+  const G = C.newGame({ scenario: '190', player: 'liubei', seed: 22 });
+  C.makePact(G, 'liubei', 'kongrong', 'ally', 24);
+  const src = G.cities.find((c) => c.owner === 'liubei'), dst = G.cities[src.adj.find((j) => G.cities[j].owner && G.cities[j].owner !== 'liubei' && G.cities[j].owner !== 'kongrong')];
+  let helped = 0;
+  for (let k = 0; k < 8; k++) { G.roll += 3; const B = C.battleSetup(G, { af: 'liubei', from: src.id, to: dst.id, atkOfficers: C.officersIn(G, src) }); if (B.units.some((u) => u.ally)) helped++; }
+  ok('allies send reinforcements', helped > 0, `${helped}/8 battles had allied help`);
+}
+{
+  const G = C.newGame({ scenario: '195', player: 'cao', seed: 23 });
+  for (const c of C.citiesOf(G, 'cao')) G.auto.cities[c.id] = true;
+  G.auto.war = true; G.auto.warMode = 'bold'; G.auto.diplo = true; G.auto.defend = 'auto';
+  const farm0 = C.citiesOf(G, 'cao').reduce((n, c) => n + c.farm + c.trade + c.wall, 0);
+  let wars = 0, err = null;
+  try { for (let m = 0; m < 12 && !G.over; m++) { const { threats, reports } = C.endMonth(G); wars += reports.filter((x) => x.kind === 'war').length; for (const t of threats) { const B = C.battleSetup(G, t); C.autoBattle(B); C.settle(G, B); } } } catch (e) { err = e; console.log(e.stack); }
+  const farm1 = C.citiesOf(G, 'cao').reduce((n, c) => n + c.farm + c.trade + c.wall, 0);
+  ok('delegation runs the house', !err && farm1 > farm0, `development ${farm0} → ${farm1} · ${wars} campaigns · cities ${C.citiesOf(G, 'cao').length}`);
+}
 console.log(fails ? `test: ${fails} FAILED` : 'test: all passed');
 process.exit(fails ? 1 : 0);

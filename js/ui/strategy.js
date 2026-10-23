@@ -48,6 +48,9 @@ export async function runCampaign(G, { save, quit }) {
       el('span', { class: 'small' }, `${T('城', 'Cities')} ${mine.length}/${G.cities.length} · ${T('武將', 'Officers')} ${offs.length} · ${T('金', 'Gold')} ${gold} · ${T('兵', 'Troops')} ${troops}`),
       el('span', { class: 'grow' }),
       el('button', { class: 'btn mission', onclick: () => missionBoard() }, T(`任務 ${G.missions.length}`, `Missions ${G.missions.length}`)),
+      el('button', { class: 'btn', onclick: () => diplomacy() }, T('外交', 'Diplomacy')),
+      el('button', { class: 'btn' + (delegating() ? ' primary' : ''), onclick: () => delegation() }, delegating() ? T('委任中', 'Delegating') : T('委任', 'Delegate')),
+      el('button', { class: 'btn' + (autoRun ? ' war' : ''), title: T('讓月份自動推進（電腦處理委任的部分）', 'Let the months pass by themselves'), onclick: () => toggleAuto() }, autoRun ? T('⏸ 停止', '⏸ Stop') : T('▶ 自動', '▶ Auto')),
       el('button', { class: 'btn', onclick: () => officerList() }, T('武將', 'Officers')),
       el('button', { class: 'btn', onclick: () => bagSheet() }, T('道具', 'Items')),
       el('button', { class: 'btn', onclick: () => chronicle() }, T('記錄', 'Chronicle')),
@@ -71,6 +74,8 @@ export async function runCampaign(G, { save, quit }) {
         stat(T('農業', 'Farming'), c.farm, c.farmMax), stat(T('商業', 'Commerce'), c.trade, c.tradeMax), stat(T('城防', 'Walls'), c.wall, c.wallMax)),
       el('div', { class: 'defrow small' }, el('span', { class: 'dim' }, T('防守設施', 'Defences')), ...Object.entries(C.FACILITIES).map(([k, F]) => el('span', { class: 'tag', title: T(F.desc) }, `${T(F.name)} ${k === 'moat' ? (c.fac.moat ? '✓' : '—') : k === 'trap' && !mine ? '?' : c.fac[k] || 0}`))),
     );
+    if (c.owner && !mine) { const rel = C.relOf(G, G.player, c.owner), p = C.pactOf(G, G.player, c.owner); side.append(el('div', { class: 'small', style: { marginTop: '4px' } }, T('關係', 'Relations'), ' ', el('b', { style: { color: relCol(rel) } }, `${rel}（${T(C.relWord(rel))}）`), p ? el('span', { class: 'tag pact' }, `${T(C.PACTS[p.type].name)} ${p.until - G.t}${T('個月', ' mo')}`) : null)); }
+    if (mine) side.append(el('label', { class: 'small row', style: { marginTop: '4px', cursor: 'pointer' } }, el('input', { type: 'checkbox', checked: G.auto.cities[c.id] || null, onchange: (e) => { if (e.target.checked) G.auto.cities[c.id] = true; else delete G.auto.cities[c.id]; save(); drawSide(); } }), T('委任電腦處理這座城的內政（月底自動下指令）', 'Let the computer run this city (orders given at month end)')));
     // officers here
     side.append(el('div', { class: 'title small sect' }, T(`武將（${offs.length}）`, `Officers (${offs.length})`)));
     const list = el('div', { class: 'list' });
@@ -213,8 +218,14 @@ export async function runCampaign(G, { save, quit }) {
       const j = ts.length === 1 ? 0 : await choose(T('進攻哪座城？', 'Attack which city?'), ts.map((d) => `${cityName(d.name)}（${fname(G, d.owner)} · ${T('兵', 'troops')} ${d.troops}）`)); if (j < 0) return;
       target = ts[j];
     }
+    const pact = target.owner && C.pactOf(G, G.player, target.owner);
+    if (pact) {
+      const r = await modal(el('div', {}, el('div', { class: 'title', style: { color: 'var(--red)' } }, T('撕毀盟約？', 'Break the pact?')), el('div', {}, T(`我們與${fname(G, target.owner)}有${C.PACTS[pact.type].name[0]}（還有 ${pact.until - G.t} 個月）。進攻會撕毀盟約，對方關係大幅下降，其他勢力也會不再信任我們。`, `We have a ${C.PACTS[pact.type].name[1].toLowerCase()} with ${fname(G, target.owner)} (${pact.until - G.t} months left). Attacking breaks it: they will hate us, and others will trust us less.`))), [T('撕毀並進攻', 'Break it and attack'), T('取消', 'Cancel')]);
+      if (r !== 0) return;
+    }
     const picked = await deploy(src, T(`出征 ${cityName(target.name)}`, `March on ${cityName(target.name)}`), target);
     if (!picked) return;
+    if (pact) C.breakPact(G, G.player, target.owner);
     await fight({ af: G.player, from: src.id, to: target.id, atkOfficers: picked, atkTroops: picked.troops });
   }
   // choose who marches (up to ten); shows the troops each would lead
@@ -315,15 +326,27 @@ export async function runCampaign(G, { save, quit }) {
     const idle = C.officersOf(G, G.player).filter((o) => !o.done).length;
     toast(T('月份推進中……', 'The month passes…'), 900); await wait(60);
     const before = G.log.length;
-    const { threats } = C.endMonth(G);
+    const { threats, offers, reports } = C.endMonth(G);
     busy = false;
     drawSide(); save();
+    // what the computer did for us
+    const warLines = reports.filter((x) => x.kind === 'war').map((x) => T(`委任出征：${cityName(G.cities[x.from].name)} → ${cityName(G.cities[x.to].name)}，${x.won ? '攻下了！' : '失敗了。'}${x.captured ? `俘虜 ${x.captured} 人` : ''}`, `Delegated campaign: ${cityName(G.cities[x.from].name)} → ${cityName(G.cities[x.to].name)}, ${x.won ? 'taken!' : 'failed.'}${x.captured ? ` ${x.captured} captured` : ''}`));
     // news of the month
-    const news = G.log.slice(before).filter((l) => l.fac === G.player || /攻下|滅亡|瓦解|繼承/.test(l.text[0]));
-    if (news.length) await modal(el('div', {}, el('div', { class: 'title' }, T(`${G.year}年${G.month}月 · 天下情勢`, `News, ${G.month}/${G.year}`)), news.slice(-8).map((l) => el('div', { class: 'small' }, T(...l.text)))), [T('確定', 'OK')]);
+    const news = G.log.slice(before).filter((l) => l.fac === G.player || /攻下|滅亡|瓦解|繼承|締結|撕毀/.test(l.text[0]));
+    if (autoRun) { const lines = [...warLines, ...news.slice(-3).map((l) => T(...l.text))]; if (lines.length) toast(lines.join('　'), 2600); }
+    else if (news.length || warLines.length) await modal(el('div', {}, el('div', { class: 'title' }, T(`${G.year}年${G.month}月 · 天下情勢`, `News, ${G.month}/${G.year}`)), warLines.map((l) => el('div', { class: 'small', style: { color: 'var(--gold2)' } }, l)), news.slice(-8).map((l) => el('div', { class: 'small' }, T(...l.text)))), [T('確定', 'OK')]);
+    if (G.captives.length) await captives();
+    // envoys from other houses
+    for (const o of offers) {
+      const f = G.factions[o.from], P = C.PACTS[o.kind], rel = C.relOf(G, o.from, G.player);
+      const r = await modal(el('div', {}, el('div', { class: 'title' }, T('使者來訪', 'An envoy arrives')), el('div', {}, T(`${f.name}派使者前來，希望與我們締結${P.name[0]}（${P.months} 個月）。`, `${f.name} sends an envoy proposing a ${P.name[1].toLowerCase()} (${P.months} months).`)), el('div', { class: 'small dim' }, T(`目前關係 ${rel}（${C.relWord(rel)[0]}）· 對方城市 ${C.citiesOf(G, o.from).length} 座`, `Relations ${rel} (${C.relWord(rel)[1]}) · they hold ${C.citiesOf(G, o.from).length} cities`))), [T('接受', 'Accept'), T('拒絕', 'Decline')]);
+      C.answerOffer(G, o, r === 0); toast(r === 0 ? T(`與${f.name}締結了${P.name[0]}`, `${P.name[1]} agreed with ${f.name}`) : T('拒絕了提議', 'Declined'));
+    }
+    if (offers.length) { save(); drawSide(); }
     for (const t of threats) {
       const src = G.cities[t.from], dst = G.cities[t.to];
       if (dst.owner !== G.player) continue;
+      if (G.auto.defend === 'auto') { await fight(t, { auto: true }); if (G.over) return; continue; }
       const r = await modal(el('div', {}, el('div', { class: 'title', style: { color: 'var(--red)' } }, T('敵軍來襲！', 'Enemy attack!')), el('div', {}, T(`${fname(G, t.af)}軍（武將 ${t.atkOfficers.length} 人，兵 ${Math.round(src.troops * 0.85)}）從${cityName(src.name)}攻向${cityName(dst.name)}！`, `${fname(G, t.af)}'s army (${t.atkOfficers.length} officers, ${Math.round(src.troops * 0.85)} troops) marches from ${cityName(src.name)} on ${cityName(dst.name)}!`)), el('div', { class: 'small dim' }, T(`${cityName(dst.name)}：兵 ${dst.troops} · 武將 ${C.officersIn(G, dst).length}`, `${cityName(dst.name)}: ${dst.troops} troops · ${C.officersIn(G, dst).length} officers`))), [T('親自迎擊', 'Command the defence'), T('委任守將', 'Leave it to the garrison')]);
       if (r === 0 && C.officersIn(G, dst).length) { const picked = await deploy(dst, T(`迎擊：${cityName(dst.name)}`, `Defend ${cityName(dst.name)}`), null); await fight({ ...t, defOfficers: picked || undefined, defTroops: picked ? picked.troops : undefined }, { defending: true }); }
       else await fight(t, { auto: true });
@@ -331,6 +354,88 @@ export async function runCampaign(G, { save, quit }) {
     }
     void idle;
     if (C.checkOver(G)) await ending();
+  }
+  // ------------------------------------------------ diplomacy
+  const relCol = (v) => (v >= 25 ? 'var(--green)' : v > -25 ? 'var(--ink)' : 'var(--red)');
+  // choose an envoy from any of our cities (best for the job first)
+  function pickEnvoy(title, label) {
+    const offs = C.officersOf(G, G.player).filter((o) => !o.done).sort((a, b) => label(b)[1] - label(a)[1]);
+    if (!offs.length) { toast(T('本月沒有可以派出的武將了', 'No one is free this month')); return Promise.resolve(null); }
+    return new Promise((resolve) => {
+      const close = sheet(el('div', {}, el('div', { class: 'title' }, title), el('div', { class: 'list scroll', style: { maxHeight: '60vh' } }, offs.map((o) => el('div', { class: 'item', onclick: () => { close(); resolve(o); } }, face(o, G.factions[G.player].color, 28), el('div', { class: 'grow' }, nm(o.name), el('div', { class: 'small dim' }, `${cityName(G.cities[o.city].name)} · ${T('魅力', 'CHA')} ${o.cha} · ${T('智力', 'INT')} ${o.int}`)), el('b', {}, label(o)[0])))),
+        el('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '8px' } }, el('button', { class: 'btn', onclick: () => { close(); resolve(null); } }, T('取消', 'Cancel')))), { onBack: () => resolve(null) });
+    });
+  }
+  function diplomacy() {
+    const box = el('div', {});
+    const render = () => {
+      const fs = Object.values(G.factions).filter((f) => f.alive && f.id !== G.player).sort((a, b) => C.factionPower(G, b.id) - C.factionPower(G, a.id));
+      const top = Math.max(...fs.map((f) => C.factionPower(G, f.id)), C.factionPower(G, G.player));
+      clear(box).append(el('div', { class: 'title' }, T('外交', 'Diplomacy')),
+        el('div', { class: 'small dim' }, T('派使者去贈禮（提升關係）、提議停戰（12 個月互不侵犯）或結盟（24 個月，盟友會派援軍來助戰）。關係越好、使者魅力越高、我方越強，越容易成功。每位使者每月只能出使一次。', 'Send envoys to give gifts (better relations), propose a truce (12 months of peace) or an alliance (24 months; allies send help into your battles). Better relations, a more charming envoy and a stronger house all help. Each envoy goes once a month.')),
+        el('div', { class: 'list scroll', style: { maxHeight: '62vh', marginTop: '8px' } }, fs.map((f) => {
+          const rel = C.relOf(G, G.player, f.id), p = C.pactOf(G, G.player, f.id), near = C.neighbours(G, G.player, f.id), pw = C.factionPower(G, f.id);
+          return el('div', { class: 'item diplo' }, el('span', { class: 'seal', style: { background: f.color } }, nm(f.name).slice(0, EN ? 3 : 1)),
+            el('div', { class: 'grow' }, el('div', {}, el('b', {}, nm(f.name)), near ? el('span', { class: 'tag' }, T('接壤', 'Border')) : null, p ? el('span', { class: 'tag pact' }, `${T(C.PACTS[p.type].name)} ${p.until - G.t}${T('個月', ' mo')}`) : null),
+              el('div', { class: 'small dim' }, `${T('城', 'Cities')} ${C.citiesOf(G, f.id).length} · ${T('武將', 'Officers')} ${C.officersOf(G, f.id).length} · ${T('國力', 'Power')} ${Math.round(pw / top * 100)}%`),
+              el('div', { class: 'small' }, T('關係 ', 'Relations '), el('b', { style: { color: relCol(rel) } }, `${rel}（${T(C.relWord(rel))}）`)),
+              alliesLine(f.id)),
+            el('div', { class: 'row diplobtns' },
+              el('button', { class: 'btn small', onclick: () => act(f, 'gift') }, T('贈禮', 'Gift')),
+              el('button', { class: 'btn small', disabled: (p && p.type === 'truce') || (p && p.type === 'ally') || null, onclick: () => act(f, 'truce') }, T('停戰', 'Truce')),
+              el('button', { class: 'btn small', disabled: (p && p.type === 'ally') || null, onclick: () => act(f, 'ally') }, T('結盟', 'Ally')),
+              p ? el('button', { class: 'btn small war', onclick: () => act(f, 'break') }, T('破棄', 'Break')) : null));
+        })),
+        el('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '8px' } }, el('button', { class: 'btn primary', onclick: () => close() }, T('關閉', 'Close'))));
+    };
+    const alliesLine = (fid) => { const ps = Object.values(G.factions).filter((g) => g.alive && g.id !== fid && C.pactOf(G, fid, g.id)); return ps.length ? el('div', { class: 'small dim' }, T('盟約：', 'Pacts: '), ps.map((g) => `${nm(g.name)}(${T(C.PACTS[C.pactOf(G, fid, g.id).type].name)})`).join(T('、', ', '))) : null; };
+    async function act(f, kind) {
+      if (kind === 'break') { if (await modal(el('div', {}, T(`確定要撕毀與${nm(f.name)}的盟約嗎？關係會大幅下降，其他勢力也會不再信任我們。`, `Really break the pact with ${nm(f.name)}? They will hate us, and others will trust us less.`)), [T('撕毀', 'Break it'), T('取消', 'Cancel')]) !== 0) return; const [, msg] = C.envoy(G, { done: false, fac: G.player, city: 0, id: 0 }, f.id, 'break'); toast(T(...msg), 2400); save(); render(); drawSide(); return; }
+      const o = await pickEnvoy(kind === 'gift' ? T(`派誰送禮給${nm(f.name)}？`, `Who takes the gift to ${nm(f.name)}?`) : T(`派誰去${nm(f.name)}提議${C.PACTS[kind].name[0]}？`, `Who proposes a ${C.PACTS[kind].name[1].toLowerCase()} to ${nm(f.name)}?`), (x) => (kind === 'gift' ? [`${T('魅力', 'CHA')} ${x.cha}`, x.cha] : [`${T('成功率', 'chance')} ${C.diploChance(G, x, f.id, kind)}%`, C.diploChance(G, x, f.id, kind)]));
+      if (!o) return;
+      let gold = 0;
+      if (kind === 'gift') { const c = G.cities[o.city], opts = [300, 800, 2000].filter((g) => g <= c.gold); if (!opts.length) return toast(T(`${cityName(c.name)}的金錢不足`, `Not enough gold in ${cityName(c.name)}`)); const j = await choose(T(`從${cityName(c.name)}（金 ${c.gold}）送多少？`, `How much from ${cityName(c.name)} (${c.gold} gold)?`), opts.map((g) => T(`金 ${g}`, `${g} gold`))); if (j < 0) return; gold = opts[j]; }
+      const [ok, msg] = C.envoy(G, o, f.id, kind, gold); sfx(ok ? 'ok' : 'hurt'); toast(`${nm(o.name)}：${T(...msg)}`, 2600); save(); render(); drawSide();
+    }
+    render(); const close = sheet(box, { wide: true, onBack: () => drawSide() });
+  }
+  // ------------------------------------------------ delegating to the computer
+  const delegating = () => Object.keys(G.auto.cities).some((id) => G.cities[id].owner === G.player) || G.auto.war || G.auto.defend === 'auto' || G.auto.diplo;
+  function delegation() {
+    const box = el('div', {});
+    const render = () => {
+      const mine = C.citiesOf(G, G.player);
+      const chk = (on, label, set) => el('label', { class: 'item', style: { cursor: 'pointer' } }, el('input', { type: 'checkbox', checked: on || null, onchange: (e) => { set(e.target.checked); save(); render(); drawTop(); } }), el('span', { class: 'grow' }, label));
+      clear(box).append(el('div', { class: 'title' }, T('委任電腦', 'Delegate to the computer')),
+        el('div', { class: 'small dim' }, T('勾選的部分會在每個月底由電腦自動處理。手動下過指令的武將不會被打擾。', 'What you tick is done by the computer at the end of each month. Officers you\u2019ve already given orders keep them.')),
+        el('div', { class: 'title small sect' }, T('內政：委任的城市', 'Domestic: delegated cities')),
+        el('div', { class: 'row' }, el('button', { class: 'btn small', onclick: () => { for (const c of mine) G.auto.cities[c.id] = true; save(); render(); drawSide(); } }, T('全部委任', 'All')), el('button', { class: 'btn small', onclick: () => { G.auto.cities = {}; save(); render(); drawSide(); } }, T('全部取消', 'None'))),
+        el('div', { class: 'edgrid' }, mine.map((c) => chk(G.auto.cities[c.id], `${cityName(c.name)}（${T('武將', 'officers')} ${C.officersIn(G, c).length}）`, (v) => { if (v) G.auto.cities[c.id] = true; else delete G.auto.cities[c.id]; }))),
+        el('div', { class: 'title small sect' }, T('軍事', 'War')),
+        chk(G.auto.war, T('委任電腦出征：有把握時自動攻打鄰近敵城（每月最多一次，不會攻打盟友）', 'Let the computer march: attack a weaker neighbour when it can (once a month, never an ally)'), (v) => { G.auto.war = v; }),
+        G.auto.war ? el('div', { class: 'row', style: { paddingLeft: '24px' } }, ...[['steady', T('穩健（優勢明顯才出兵）', 'Steady (only with a clear edge)')], ['bold', T('積極（稍有優勢就出兵）', 'Bold (with any edge)')]].map(([k, l]) => el('label', { class: 'small row', style: { cursor: 'pointer' } }, el('input', { type: 'radio', name: 'warmode', checked: G.auto.warMode === k || null, onchange: () => { G.auto.warMode = k; save(); } }), l))) : null,
+        chk(G.auto.defend === 'auto', T('敵軍來襲時自動迎擊（不再詢問）', 'Defend automatically when attacked (don\u2019t ask)'), (v) => { G.auto.defend = v ? 'auto' : 'ask'; }),
+        el('div', { class: 'title small sect' }, T('外交', 'Diplomacy')),
+        chk(G.auto.diplo, T('委任電腦回覆其他勢力的提議（接受停戰，與友好勢力結盟）', 'Let the computer answer proposals (accept truces; ally with friends)'), (v) => { G.auto.diplo = v; }),
+        el('div', { class: 'title small sect' }, T('自動推進', 'Auto-advance')),
+        el('div', { class: 'small dim' }, T('按「▶ 自動」讓月份自動一個月一個月推進，可以隨時按「⏸ 停止」。要決定的事情（俘虜、未委任的提議與防衛）還是會問你。', 'Press "▶ Auto" to let the months roll on by themselves; "⏸ Stop" any time. Decisions you haven\u2019t delegated (captives, proposals, defence) still come to you.')),
+        el('div', { class: 'row' }, el('button', { class: 'btn' + (autoRun ? ' war' : ' primary'), onclick: () => { close(); toggleAuto(); } }, autoRun ? T('⏸ 停止自動推進', '⏸ Stop') : T('▶ 開始自動推進', '▶ Start'))),
+        el('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '8px' } }, el('button', { class: 'btn primary', onclick: () => { close(); drawSide(); } }, T('完成', 'Done'))));
+    };
+    render(); const close = sheet(box, { wide: true, onBack: () => drawSide() });
+  }
+  let autoRun = false;
+  async function toggleAuto() {
+    autoRun = !autoRun; drawTop();
+    if (!autoRun) return;
+    toast(T('自動推進中：按「⏸ 停止」可以隨時停下', 'Auto-advancing — press "⏸ Stop" any time'), 2000);
+    while (autoRun && alive && !G.over) {
+      await endMonth();
+      if (G.over) break;
+      await wait(1200);
+      while (busy && autoRun) await wait(200);
+    }
+    autoRun = false; drawTop();
   }
   // ------------------------------------------------ officer and item sheets
   function officerSheet(o) {
@@ -431,5 +536,6 @@ export async function help(first = false) {
     el('p', {}, T('【鍛鍊任務】按上方「任務」：討伐山賊、剿滅黃巾、平定蠻族、擊退賊騎、猛將試煉、尋寶探險。派最多 6 名武將以滿兵力出戰，不消耗城內士兵；完成後獲得經驗、金錢與寶物，地圖上的寶箱走上去就能打開。任務每月更新。', 'Missions (the Missions button): bandit hunts, Yellow Turban remnants, the southern tribes, raiders, a champion’s trial, a treasure hunt. Up to 6 officers go at full strength without using city troops; win for experience, gold and treasure, and walk onto chests to open them. New missions every month.')),
     el('p', {}, T('【寶物】五百種寶物分為凡品、良品、珍品、寶物、神器。除了能力加成，還有回復、吸血、反傷、迎擊、先手必勝、不屈、破甲、遠射、衝鋒、統帥、省力、抗策、免疫混亂等四十多種效果。在武將資料頁的裝備欄更換。', 'Treasures: five hundred, from Common to Legendary. Besides stats they carry over forty powers — regen, lifesteal, thorns, pre-emptive strikes, overwhelm, undying, pierce, long shot, charge, command, economy, resolve, immunities and more. Equip them from an officer’s page.')),
     el('p', {}, T('【守城設施】「設施」指令可以修建箭樓（城牆上自動射擊）、拒馬（騎兵無法通過）、陷坑（敵軍踩到損兵並停下）、護城河（只能從城門前的橋進攻）。敵方城市也會修建，攻城前先看看城市的防守設施。', 'Defences: the Defences order builds arrow towers (they shoot from the walls), barricades (cavalry can’t pass), pit traps (attackers lose troops and stop) and a moat (attack only across the bridges at the gates). Enemy cities build them too — check a city’s defences before you attack.')),
+    el('p', {}, T('【外交與委任】「外交」可以派使者贈禮、提議停戰（12 個月）或結盟（24 個月）；有盟約的勢力不會互相攻擊，盟友還會派援軍來助戰。其他勢力也會來提議。「委任」可以讓電腦處理指定城市的內政、自動出征、自動迎擊、回覆外交提議；按「▶ 自動」讓月份自動推進。', 'Diplomacy and delegation: send envoys with gifts, or propose a truce (12 months) or an alliance (24 months); houses with a pact don’t attack each other, and allies send help into your battles. Other houses will make offers too. Delegate lets the computer run chosen cities, march, defend and answer envoys; "▶ Auto" lets the months roll on.')),
     el('p', {}, T('【勝敗】攻城戰：擊退敵將主將、全滅敵軍或佔領城池就勝利；我方主將撤退或超過回合限制就敗北。武將會升級，Lv15 與 Lv30 晉升兵種。俘虜可以登用、釋放或處斬。統一全部 45 座城就是天下統一！', 'Victory: rout their commander, wipe them out, or take the keep. Lose if your commander falls or time runs out. Officers level up and promote at Lv15 and Lv30. Captives can be recruited, released or executed. Hold all 45 cities to unite the realm!'))), [T('明白了', 'Got it')]);
 }

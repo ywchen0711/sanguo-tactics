@@ -98,6 +98,12 @@ tr.off td { opacity: 0.6; }
 .allocrow input[type=number] { width: 82px; background: #1c120c; color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; font: inherit; -webkit-user-select: text; user-select: text; }
 .allocbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; align-items: center; margin: 6px 0; }
 
+/* diplomacy */
+.tag.pact { color: var(--green); border-color: var(--green); }
+.item.diplo { align-items: flex-start; flex-wrap: wrap; cursor: default; }
+.item.diplo .seal { min-width: 34px; height: 34px; font-size: 16px; }
+.diplobtns { gap: 4px; align-self: center; }
+
 /* missions */
 .stars { color: #ffc840; letter-spacing: 1px; }
 .item.legend { border-color: #ffc840; background: linear-gradient(90deg, rgba(255, 200, 64, 0.16), rgba(255, 255, 255, 0.03)); }

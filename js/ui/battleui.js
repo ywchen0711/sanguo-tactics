@@ -103,7 +103,7 @@ export async function runBattle(B, opts = {}) {
     const sts = Object.keys(u.st).map((k) => el('span', { class: 'tag', style: { color: AILMENTS[k][2], borderColor: AILMENTS[k][2] } }, T(AILMENTS[k])));
     clear(hud.card).append(
       el('div', { class: 'head' }, pc, el('div', { style: { flex: 1, minWidth: 0 } },
-        el('div', { class: 'nm', style: { color: u.side === me ? 'var(--blue)' : 'var(--red)' } }, nm(u.o.name), u.commander ? el('span', { class: 'tag', style: { marginLeft: '6px', color: 'var(--gold)', borderColor: 'var(--gold)' } }, T('主將', 'Cmdr')) : null),
+        el('div', { class: 'nm', style: { color: u.side === me ? 'var(--blue)' : 'var(--red)' } }, nm(u.o.name), u.ally ? el('span', { class: 'tag', style: { marginLeft: '6px', color: 'var(--green)', borderColor: 'var(--green)' } }, T('援軍', 'Ally')) : null, u.commander ? el('span', { class: 'tag', style: { marginLeft: '6px', color: 'var(--gold)', borderColor: 'var(--gold)' } }, T('主將', 'Cmdr')) : null),
         el('div', { class: 'small dim' }, `${T(u.s.cls)} · Lv ${u.o.lv}${u.side === me ? ` · EXP ${u.o.exp || 0}` : ''}`))),
       el('div', { class: 'row small', style: { justifyContent: 'space-between', marginTop: '4px' } }, el('span', {}, `${T('兵力', 'Troops')} ${u.hp}/${u.s.hp}`), el('span', { class: 'dim' }, `${T('策略', 'MP')} ${u.mp}/${u.s.mp}`)),
       bar(u.hp, u.s.hp, u.hp / u.s.hp > 0.5 ? '#5ad06a' : u.hp / u.s.hp > 0.25 ? '#e0c040' : '#e05a4a'), el('div', { style: { height: '3px' } }), bar(u.mp, u.s.mp || 1, '#4a8aff'),
@@ -175,7 +175,7 @@ export async function runBattle(B, opts = {}) {
   async function banner(text, ms = 900) { hud.banner.textContent = text; hud.banner.style.display = ''; await W(ms); hud.banner.style.display = 'none'; }
   async function show(e) {
     const t = e.t;
-    if (t === 'phase') { goalText(); const mine = e.side === me; music('battle'); await banner(mine ? T(`第 ${e.turn} 回合　我軍行動`, `Turn ${e.turn} — your move`) : T(`第 ${e.turn} 回合　敵軍行動`, `Turn ${e.turn} — enemy move`), 800); return; }
+    if (t === 'phase') { goalText(); const mine = e.side === me; music('battle'); if (mine && e.turn === 1 && B.allyHelp && !B.allyShown) { B.allyShown = true; await banner(T('盟軍派來了援軍！', 'Our allies have sent help!'), 1200); } await banner(mine ? T(`第 ${e.turn} 回合　我軍行動`, `Turn ${e.turn} — your move`) : T(`第 ${e.turn} 回合　敵軍行動`, `Turn ${e.turn} — enemy move`), 800); return; }
     if (t === 'move') {
       const u = e.u; view.ensure(u.x, u.y);
       for (let i = 1; i < e.path.length; i++) {
@@ -384,7 +384,7 @@ export async function runBattle(B, opts = {}) {
     for (;;) {
       if (B.over) return;
       // confused units and the towers on our walls act on their own
-      for (const u of B.units.filter((x) => R.alive(x) && x.side === me && !x.done && (x.st.conf || x.structure))) { R.runPlan(B, u, R.plan(B, u)); await play(); }
+      for (const u of B.units.filter((x) => R.alive(x) && x.side === me && !x.done && (x.st.conf || x.structure || x.ally))) { view.active = u; view.ensure(u.x, u.y); R.runPlan(B, u, R.plan(B, u)); await play(); }
       const left = B.units.filter((u) => R.alive(u) && u.side === me && !u.done);
       if (!left.length || B.over) return;
       if (auto) { await aiRun(me); continue; }

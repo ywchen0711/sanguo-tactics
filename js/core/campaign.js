@@ -11,7 +11,7 @@ import { USABLES, GEAR, LINES } from '../data/rules.js';
 import { RELICS, rollRelic } from '../data/relics.js';
 import { pickLine, startLevel, defaultGear, battleStats, gainExp, TREASURES, itemDef, fits } from './officer.js';
 import { makeField, themeFor, rng } from './mapgen.js';
-import { createBattle, aiPhase, endPhase, alive, addTower } from './battle.js';
+import { createBattle, aiPhase, endPhase, alive, addTower, addUnit } from './battle.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
@@ -80,6 +80,14 @@ export function newGame({ scenario = '190', player = 'cao', seed = (Date.now() &
   }
   if (!G.factions[player]) G.player = Object.keys(G.factions)[0];
   G.missions = []; rollMissions(G);
+  // diplomacy: relations, alliances and truces as history had them
+  G.rel = {}; G.pacts = {};
+  if (S.dong && G.factions.dong) for (const f of Object.values(G.factions)) if (f.id !== 'dong') addRel(G, 'dong', f.id, -40);
+  for (const [a, b, v] of S.rel || []) if (G.factions[a] && G.factions[b]) G.rel[pk(a, b)] = v;
+  for (const [a, b] of S.ally || []) if (G.factions[a] && G.factions[b]) makePact(G, a, b, 'ally', 24);
+  for (const [a, b] of S.truce || []) if (G.factions[a] && G.factions[b]) makePact(G, a, b, 'truce', 12);
+  // what the computer does on the player's behalf
+  G.auto = { cities: {}, war: false, warMode: 'steady', defend: 'ask', diplo: false };
   note(G, ['天下大亂，群雄並起。', 'The realm falls into chaos and warlords rise.']);
   return G;
 }
@@ -236,6 +244,19 @@ export function battleSetup(G, { af, from, to, atkOfficers, defOfficers, atkTroo
   const B = createBattle({ map, seed, limit: 30,
     atk: { fac: af, name: G.factions[af].name, color: G.factions[af].color, player: af === pl, units: atkM.map((m, i) => ({ ...m, commander: i === atkLeadIdx })) },
     def: { fac: df, name: df ? G.factions[df].name : '守軍', color: df ? G.factions[df].color : '#8a8a7a', player: !!df && df === pl, units: defM.map((m, i) => ({ ...m, commander: i === defLeadIdx, mode: i === defLeadIdx ? 'guard' : 'hold' })) } });
+  // allies of the player send help from a neighbouring city
+  for (const side of ['atk', 'def']) {
+    const fid = side === 'atk' ? af : df; if (fid !== G.player) continue;
+    const rr = dice(G, to * 7 + 3);
+    for (const a of alliesOf(G, G.player)) {
+      const c = [...new Set([...dst.adj, ...src.adj])].map((j) => G.cities[j]).find((x) => x.owner === a && officersIn(G, x).length >= 2 && x.troops >= 2000);
+      if (!c || rr() > 0.75) continue;
+      const helpers = officersIn(G, c).filter((o) => !isLord(G, o) && !o.done).sort((x, y) => quality(y) - quality(x)).slice(0, 2);
+      const spots = side === 'atk' ? map.atkStart : map.defStart;
+      for (const o of helpers) { const n = Math.min(maxTroops(o), Math.round(c.troops * 0.2)); const p = spots[(B.units.filter((u) => u.side === side).length + 1) % spots.length]; addUnit(B, side, o, n, p[0], p[1], { ally: a, color: G.factions[a].color }); }
+      if (helpers.length) B.allyHelp = (B.allyHelp || []).concat([a]);
+    }
+  }
   // the towers on the walls
   const tlv = Math.round(4 + dst.wall / 70 + (G.year - 190) / 2);
   for (const [x, y] of map.towerSpots) addTower(B, 'def', x, y, tlv);
@@ -260,7 +281,10 @@ export function settle(G, B) {
   const sent = sum(A, (u) => u.start), atkLeft = sum(A.filter(alive), (u) => u.hp), defLeft = sum(D.filter(alive), (u) => u.hp);
   src.troops = Math.max(0, src.troops - Math.min(src.troops, sent));
   out.atkLeft = atkLeft; out.defLeft = defLeft;
-  const real = (u) => u.o && !u.o.militia && u.o.id >= 0;
+  const real = (u) => u.o && !u.o.militia && u.o.id >= 0 && !u.ally;
+  if (df) addRel(G, af, df, -20);
+  // allied reinforcements: their losses come out of their own city
+  for (const u of B.units.filter((x) => x.ally)) { const home = G.cities[u.o.city]; if (home) home.troops = Math.max(0, home.troops - (u.start - (alive(u) ? u.hp : 0))); u.o.done = true; }
   // what's left of the defences
   if (dst.fac) {
     const towers = B.units.filter((u) => u.structure && u.side === 'def'), standing = towers.filter(alive).length;
@@ -368,7 +392,10 @@ export function checkOver(G) {
 // ---------------------------------------------------------------- the end of the month
 // income and upkeep, AI turns, and the attacks that the player must answer: returns { threats: [battleSetup args] }
 export function endMonth(G, { autoPlayer = false } = {}) {
-  const threats = [];
+  const threats = [], offers = [], reports = [];
+  // the computer's work for the player: the delegated cities' orders, and (if allowed) a campaign
+  if (!autoPlayer && G.factions[G.player].alive) playerAuto(G, reports);
+  diplomacyMonth(G, offers);
   // AI warlords (and, for tests, the player's own house)
   for (const f of Object.values(G.factions)) if (f.alive && (f.id !== G.player || autoPlayer)) { if (f.id === G.player) for (const o of officersOf(G, f.id)) o.done = false; aiTurn(G, f, threats); }
   // the months turn
@@ -382,7 +409,7 @@ export function endMonth(G, { autoPlayer = false } = {}) {
   }
   for (const o of G.officers) o.done = false;
   rollMissions(G);
-  return { threats };
+  return { threats, offers, reports };
 }
 function newYear(G) {
   // young talents come of age where they were born
@@ -391,6 +418,45 @@ function newYear(G) {
 function aiTurn(G, f, threats) {
   const r = dice(G, f.id.length * 97 + f.id.charCodeAt(0));
   const cities = citiesOf(G, f.id);
+  aiDevelop(G, f, cities, r);
+  // send spare officers toward the front
+  for (const c of cities) {
+    const os = officersIn(G, c), front = c.adj.map((i) => G.cities[i]).filter((d) => d.owner === f.id && d.adj.some((j) => G.cities[j].owner !== f.id) && officersIn(G, d).length < 3);
+    if (os.length > 4 && front.length) { const o = os.filter((x) => !isLord(G, x)).sort((a, b) => quality(a) - quality(b))[0]; if (o) { o.city = front[0].id; o.done = true; } }
+  }
+  // captives: try to win them over, else let them go
+  for (const o of G.officers.filter((x) => x.status === 'captive' && x.captiveOf === f.id)) { if (r() < 0.4 && !isLord(G, o)) join(G, o, f.id, cities[0].id); else release(G, o); }
+  // war: at most one campaign a month, against a clearly weaker neighbour it has no pact with
+  if (r() < 0.55) {
+    const plan = warPlan(G, f.id, r, 1.25);
+    if (plan) {
+      if (plan.d.owner === G.player) threats.push(plan.args);
+      else { const B = battleSetup(G, plan.args); autoBattle(B); settle(G, B); }
+    }
+  }
+}
+// the best attack this house could make: { c, d, args } or null
+export function warPlan(G, fid, r, need = 1.25, idleOnly = false) {
+  let best = null;
+  for (const c of citiesOf(G, fid)) {
+    const os = officersIn(G, c).filter((o) => !idleOnly || !o.done);
+    if (os.length < 2 || c.troops < 3500) continue;
+    for (const j of c.adj) {
+      const d = G.cities[j]; if (d.owner === fid || atPeace(G, fid, d.owner)) continue;
+      const ratio = cityPower(G, c) * 0.8 / Math.max(1, cityPower(G, d));
+      const want = ratio * (d.owner === G.player ? 0.9 : 1) * (d.owner ? 1 : 1.3) * (d.owner ? 1 - relOf(G, fid, d.owner) / 300 : 1) + r() * 0.3;
+      if (ratio > need && (!best || want > best.want)) best = { want, c, d };
+    }
+  }
+  if (!best) return null;
+  const { c, d } = best, os = officersIn(G, c).filter((o) => !idleOnly || !o.done).sort((a, b) => quality(b) - quality(a));
+  const lord = os.find((o) => isLord(G, o)), go = os.filter((o) => o !== lord).slice(0, Math.min(MAX_DEPLOY - 1, os.length - 1));
+  if (!go.length && lord) go.push(lord);
+  if (!go.length) return null;
+  return { c, d, args: { af: fid, from: c.id, to: d.id, atkOfficers: go } };
+}
+// a house's officers each do something useful (for the AI, and for the player's delegated cities)
+function aiDevelop(G, f, cities, r) {
   for (const c of cities) {
     const os = officersIn(G, c);
     for (const o of os) {
@@ -404,42 +470,111 @@ function aiTurn(G, f, threats) {
     // recruit anyone free in the city
     for (const t of freeIn(G, c)) { const o = os.find((x) => !x.done); if (o && r() < 0.5) recruit(G, o, t); }
   }
-  // send spare officers toward the front
-  for (const c of cities) {
-    const os = officersIn(G, c), front = c.adj.map((i) => G.cities[i]).filter((d) => d.owner === f.id && d.adj.some((j) => G.cities[j].owner !== f.id) && officersIn(G, d).length < 3);
-    if (os.length > 4 && front.length) { const o = os.filter((x) => !isLord(G, x)).sort((a, b) => quality(a) - quality(b))[0]; if (o) { o.city = front[0].id; o.done = true; } }
+}
+// ---------------------------------------------------------------- delegating to the computer (委任)
+// G.auto: { cities: { id: true }, war, warMode: 'bold'|'steady', defend: 'ask'|'auto', diplo }
+function playerAuto(G, reports) {
+  const f = G.factions[G.player], r = dice(G, 555);
+  // a campaign first (with officers who haven't acted), then the delegated cities' orders
+  if (G.auto.war) {
+    const plan = warPlan(G, G.player, r, G.auto.warMode === 'bold' ? 1.1 : 1.45, true);
+    if (plan) {
+      const B = battleSetup(G, plan.args); autoBattle(B); const res = settle(G, B);
+      reports.push({ kind: 'war', from: plan.c.id, to: plan.d.id, won: res.atkWon, captured: res.captured.length });
+    }
   }
-  // captives: try to win them over, else let them go
-  for (const o of G.officers.filter((x) => x.status === 'captive' && x.captiveOf === f.id)) { if (r() < 0.4 && !isLord(G, o)) join(G, o, f.id, cities[0].id); else release(G, o); }
-  // war: at most one campaign a month, against a clearly weaker neighbour
-  if (r() < 0.55) {
-    let best = null;
-    for (const c of cities) {
-      const os = officersIn(G, c).filter((o) => !o.done || true);
-      if (os.length < 2 || c.troops < 3500) continue;
-      for (const j of c.adj) {
-        const d = G.cities[j]; if (d.owner === f.id) continue;
-        const ratio = cityPower(G, c) * 0.8 / Math.max(1, cityPower(G, d));
-        const want = ratio * (d.owner === G.player ? 0.9 : 1) * (d.owner ? 1 : 1.3) + r() * 0.3;
-        if (ratio > 1.25 && (!best || want > best.want)) best = { want, c, d };
-      }
-    }
-    if (best) {
-      const { c, d } = best, os = officersIn(G, c).sort((a, b) => quality(b) - quality(a));
-      const lord = os.find((o) => isLord(G, o)), go = os.filter((o) => o !== lord).slice(0, Math.min(MAX_DEPLOY - 1, os.length - 1));
-      if (!go.length && lord) go.push(lord);
-      if (go.length) {
-        const args = { af: f.id, from: c.id, to: d.id, atkOfficers: go };
-        if (d.owner === G.player) threats.push(args);
-        else { const B = battleSetup(G, args); autoBattle(B); settle(G, B); }
-      }
-    }
+  const delegated = citiesOf(G, G.player).filter((c) => G.auto.cities[c.id]);
+  if (delegated.length) { aiDevelop(G, f, delegated, r); reports.push({ kind: 'dev', n: delegated.length }); }
+}
+
+// ---------------------------------------------------------------- diplomacy (外交)
+const pk = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+export const relOf = (G, a, b) => (!a || !b ? 0 : a === b ? 100 : (G.rel || {})[pk(a, b)] ?? 0);
+export function addRel(G, a, b, d) { if (!a || !b || a === b) return; G.rel = G.rel || {}; G.rel[pk(a, b)] = clamp(Math.round(relOf(G, a, b) + d), -100, 100); }
+export function pactOf(G, a, b) { if (!a || !b || a === b) return null; const p = (G.pacts || {})[pk(a, b)]; return p && p.until > G.t ? p : null; }
+export const atPeace = (G, a, b) => !!pactOf(G, a, b);
+export function makePact(G, a, b, type, months) { G.pacts = G.pacts || {}; G.pacts[pk(a, b)] = { type, until: G.t + months }; }
+export const alliesOf = (G, fid) => Object.values(G.factions).filter((f) => f.alive && f.id !== fid && (pactOf(G, fid, f.id) || {}).type === 'ally').map((f) => f.id);
+export const PACTS = { truce: { name: ['停戰', 'Truce'], months: 12 }, ally: { name: ['同盟', 'Alliance'], months: 24 } };
+export const relWord = (v) => (v >= 60 ? ['親密', 'Close'] : v >= 25 ? ['友好', 'Friendly'] : v > -25 ? ['普通', 'Neutral'] : v > -60 ? ['冷淡', 'Cold'] : ['敵對', 'Hostile']);
+export const neighbours = (G, a, b) => citiesOf(G, a).some((c) => c.adj.some((j) => G.cities[j].owner === b));
+// a pact broken: the victim hates it, everyone else trusts the breaker less
+export function breakPact(G, a, b) {
+  const p = pactOf(G, a, b); if (!p) return;
+  delete G.pacts[pk(a, b)];
+  addRel(G, a, b, -60);
+  for (const f of Object.values(G.factions)) if (f.alive && f.id !== a && f.id !== b) addRel(G, a, f.id, -8);
+  note(G, [`${G.factions[a].name}撕毀了與${G.factions[b].name}的${PACTS[p.type].name[0]}！`, `${G.factions[a].name} breaks the ${PACTS[p.type].name[1].toLowerCase()} with ${G.factions[b].name}!`], a);
+}
+// how likely an envoy is to win a truce or an alliance
+export function diploChance(G, o, fid, kind) {
+  const mine = o.fac, rel = relOf(G, mine, fid), pw = factionPower(G, mine) / Math.max(1, factionPower(G, fid));
+  const common = Object.values(G.factions).some((f) => f.alive && f.id !== mine && f.id !== fid && relOf(G, mine, f.id) < -30 && relOf(G, fid, f.id) < -30);
+  let p;
+  if (kind === 'truce') p = 30 + rel * 0.5 + (o.cha - 60) * 0.6 + (o.int - 60) * 0.25 + (pw > 1 ? Math.min(25, (pw - 1) * 20) : -Math.min(25, (1 / pw - 1) * 8));
+  else p = 10 + rel * 0.7 + (o.cha - 60) * 0.6 + (o.int - 60) * 0.2 + (common ? 15 : 0) + (pw > 1.5 ? -10 : 0);
+  if (kind === 'ally' && rel < 10) p -= 25;
+  if (fid === 'dong' && G.scenario === '190') p -= 20;
+  return clamp(Math.round(p), 0, 95);
+}
+// send an envoy: 'gift' (with gold from their city), 'truce', 'ally', 'break'
+export function envoy(G, o, fid, kind, gold = 0) {
+  if (o.done) return [false, ['這位武將本月已經行動過了', 'Already busy this month']];
+  const f = G.factions[fid], c = G.cities[o.city], me = o.fac;
+  if (!f || !f.alive) return [false, ['對方已經不存在了', 'They are gone']];
+  if (kind === 'break') { breakPact(G, me, fid); return [true, [`與${f.name}的盟約已經撕毀。各方對我們的信任下降了。`, `The pact with ${f.name} is broken. Everyone trusts us a little less.`]]; }
+  if (kind === 'gift') {
+    if (c.gold < gold || gold <= 0) return [false, ['金錢不足', 'Not enough gold']];
+    c.gold -= gold; o.done = true;
+    const d = Math.round(gold / 60 + o.cha / 8); addRel(G, me, fid, d);
+    return [true, [`${f.name}收下了禮物。關係 +${d}（${relOf(G, me, fid)}）`, `${f.name} accepts the gift. Relations +${d} (${relOf(G, me, fid)})`]];
+  }
+  if (pactOf(G, me, fid) && pactOf(G, me, fid).type === kind) return [false, ['已經有這個盟約了', 'Already agreed']];
+  o.done = true;
+  const p = diploChance(G, o, fid, kind);
+  if (dice(G, o.id + 17)() * 100 < p) {
+    makePact(G, me, fid, kind, PACTS[kind].months); addRel(G, me, fid, 10);
+    note(G, [`${G.factions[me].name}與${f.name}締結了${PACTS[kind].name[0]}（${PACTS[kind].months}個月）。`, `${G.factions[me].name} and ${f.name} agree a ${PACTS[kind].name[1].toLowerCase()} (${PACTS[kind].months} months).`], me);
+    return [true, [`${o.name}說服了${f.name}！締結${PACTS[kind].name[0]} ${PACTS[kind].months} 個月。`, `${o.name} wins over ${f.name}! A ${PACTS[kind].name[1].toLowerCase()} for ${PACTS[kind].months} months.`]];
+  }
+  addRel(G, me, fid, -3);
+  return [true, [`${f.name}拒絕了${PACTS[kind].name[0]}的提議。`, `${f.name} turns down the ${PACTS[kind].name[1].toLowerCase()}.`]];
+}
+// answer a proposal from an AI house
+export function answerOffer(G, offer, yes) {
+  if (yes) { makePact(G, offer.from, G.player, offer.kind, PACTS[offer.kind].months); addRel(G, offer.from, G.player, 10); note(G, [`我們與${G.factions[offer.from].name}締結了${PACTS[offer.kind].name[0]}。`, `We agree a ${PACTS[offer.kind].name[1].toLowerCase()} with ${G.factions[offer.from].name}.`], G.player); }
+  else addRel(G, offer.from, G.player, -8);
+}
+// each month: pacts run out, tempers cool, the AI makes its own pacts and courts the player
+function diplomacyMonth(G, offers) {
+  const r = dice(G, 8080), alive = Object.values(G.factions).filter((f) => f.alive);
+  for (const [k, p] of Object.entries(G.pacts || {})) if (p.until <= G.t + 1) { delete G.pacts[k]; const [a, b] = k.split('|'); if (a === G.player || b === G.player) note(G, [`與${G.factions[a === G.player ? b : a].name}的${PACTS[p.type].name[0]}期滿了。`, `The ${PACTS[p.type].name[1].toLowerCase()} with ${G.factions[a === G.player ? b : a].name} has run out.`], G.player); }
+  for (const k of Object.keys(G.rel || {})) G.rel[k] = Math.round(G.rel[k] * 0.98);
+  // a strong player makes the others close ranks
+  const total = alive.reduce((s2, f) => s2 + factionPower(G, f.id), 0), share = factionPower(G, G.player) / Math.max(1, total);
+  for (let i = 0; i < alive.length; i++) for (let j = i + 1; j < alive.length; j++) {
+    const a = alive[i].id, b = alive[j].id; if (a === G.player || b === G.player || pactOf(G, a, b) || !neighbours(G, a, b)) continue;
+    const rel = relOf(G, a, b), againstPlayer = share > 0.35 && neighbours(G, a, G.player) && neighbours(G, b, G.player);
+    if ((rel > 40 || againstPlayer) && r() < 0.06) makePact(G, a, b, againstPlayer || rel > 60 ? 'ally' : 'truce', againstPlayer || rel > 60 ? 24 : 12);
+    else if (rel > -10 && r() < 0.02) makePact(G, a, b, 'truce', 12);
+  }
+  // proposals to the player
+  for (const f of alive) {
+    if (f.id === G.player || pactOf(G, f.id, G.player) || !neighbours(G, f.id, G.player)) continue;
+    const rel = relOf(G, f.id, G.player), weaker = factionPower(G, f.id) < factionPower(G, G.player) * 0.6;
+    if ((rel > 45 && r() < 0.06) || (weaker && rel > -40 && r() < 0.05) || (rel > 15 && r() < 0.03)) offers.push({ from: f.id, kind: rel > 45 && !weaker ? 'ally' : 'truce' });
+  }
+  if (G.auto && G.auto.diplo) {
+    // delegated: take what helps us (any truce; an alliance with a friend), refuse the rest
+    for (const o of offers.splice(0)) answerOffer(G, o, o.kind === 'truce' || relOf(G, o.from, G.player) > 30);
   }
 }
 // older saves: fill in what newer versions added
 export function migrate(G) {
   for (const c of G.cities) if (!c.fac) c.fac = { tower: c.size - 1, fence: c.size, trap: 0, moat: false };
   if (!G.missions) rollMissions(G);
+  if (!G.rel) { G.rel = {}; G.pacts = {}; }
+  if (!G.auto) G.auto = { cities: {}, war: false, warMode: 'steady', defend: 'ask', diplo: false };
   return G;
 }
 // ---------------------------------------------------------------- training missions (鍛鍊任務)
