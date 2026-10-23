@@ -9,6 +9,7 @@ import { TERRAIN, STRATS, USABLES, AILMENTS, BUFF_NAMES, DMG_KINDS, HELP_KINDS, 
 import { itemDef } from '../core/officer.js';
 import { RARITY, fxText } from '../data/relics.js';
 import * as R from '../core/battle.js';
+import { openEditor } from './editor.js';
 import { sfx, music } from '../audio.js';
 
 let FAST = false;
@@ -34,7 +35,8 @@ export async function runBattle(B, opts = {}) {
   const btn = (label, onclick, title) => el('button', { class: 'btn', title, onclick }, label);
   const autoBtn = btn(T('委任', 'Auto'), () => { auto = !auto; autoBtn.classList.toggle('primary', auto); if (auto && cancelPick) cancelPick('auto'); });
   const endBtn = btn(T('結束回合', 'End turn'), () => { if (cancelPick) cancelPick('end'); });
-  hud.top.append(endBtn, autoBtn, btn(T('全軍', 'Army'), () => armyList()), btn('＋', () => view.zoomBy(1.2)), btn('－', () => view.zoomBy(1 / 1.2)),
+  const editBtn = btn(T('⚙ 修改', '⚙ Edit'), () => { if (!opts.G) return; openEditor(opts.G, { B, onChange: () => { goalText(); if (view.active) showCard(view.active); if (B.over && cancelPick) cancelPick('end'); } }); });
+  hud.top.append(endBtn, autoBtn, editBtn, btn(T('全軍', 'Army'), () => armyList()), btn('＋', () => view.zoomBy(1.2)), btn('－', () => view.zoomBy(1 / 1.2)),
     btn(T('速度', 'Speed'), (e) => { FAST = !FAST; e.currentTarget.classList.toggle('primary', FAST); }));
   ui.append(hud.top, hud.goal, hud.card, hud.tip, hud.cmd, hud.fc, hud.banner, hud.help);
   const goalText = () => {
@@ -390,6 +392,7 @@ export async function runBattle(B, opts = {}) {
       let pick = await pickUnit();
       while (pick && pick.unit) { const next = await commandUnit(pick.unit); clear(hud.cmd); pick = next ? { unit: next } : null; }
       if (pick === 'end') {
+        if (B.over) return;
         const n = B.units.filter((u) => R.alive(u) && u.side === me && !u.done).length;
         if (n && (await modal(el('div', {}, T(`還有 ${n} 支部隊沒有行動，要結束回合嗎？`, `${n} units haven't acted. End the turn?`)), [T('結束回合', 'End turn'), T('取消', 'Cancel')])) !== 0) continue;
         return;

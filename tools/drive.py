@@ -30,6 +30,28 @@ try {
         const G = window.__sg.G;
         if (stage === 4) report(`campaign ${G.year}/${G.month} cities=${G.cities.filter((c) => c.owner === G.player).length}`);
         else if (stage === 10) { document.querySelector('.citypanel .item').click(); await wait(400); report('officer sheet'); }
+        else if (stage === 19) {
+          const setVal = (inp, v) => { inp.value = v; inp.dispatchEvent(new Event('change', { bubbles: true })); };
+          click('修改'); await wait(400);
+          const cap = G.cities[G.factions[G.player].capital];
+          setVal(document.querySelector('.editor .edgrid input[type=number]'), 77777); await wait(100);
+          [...document.querySelectorAll('.editor .tabs .btn')][1].click(); await wait(300);
+          const lvBox = [...document.querySelectorAll('.editor .ed')].find((l) => l.textContent.startsWith('等級')).querySelector('input'); setVal(lvBox, 33); await wait(200);
+          const offName = document.querySelector('.editor select').selectedOptions[0].textContent;
+          if (q.get('keep')) { report('vw=' + document.documentElement.clientWidth + ' panel=' + Math.round(document.querySelector('.modal > .panel').getBoundingClientRect().right) + ' editor open; topbar: ' + [...document.querySelectorAll('.topbar .btn')].map((b) => { const r = b.getBoundingClientRect(); return b.textContent + '@' + Math.round(r.left) + ',' + Math.round(r.top); }).join(' ')); throw 0; }
+          [...document.querySelectorAll('.editor .tabs .btn')][2].click(); await wait(300);
+          const before = Object.keys(G.bag).length; [...document.querySelectorAll('.editor .btn.primary')].find((b) => b.textContent === '加入').click(); await wait(200);
+          click('完成'); await wait(400);
+          report(`edit gold=${cap.gold} officer="${offName}" lv=${G.officers.find((o) => offName.startsWith(o.name)).lv} bag ${before}->${Object.keys(G.bag).length} side=${document.querySelector('.citypanel .cstat b').textContent}`);
+        }
+        else if (stage === 20) {
+          click('出征'); await wait(400); const m = document.querySelector('.modal'); if (m && !document.querySelector('.modal .check')) { m.querySelector('.btn').click(); await wait(400); }
+          click('出陣'); await wait(400); click('開戰'); await wait(2000);
+          const B = window.__B; click('修改'); await wait(400);
+          click('我軍全滿'); await wait(100); click('立即勝利'); await wait(3500);
+          for (let i = 0; i < 6 && document.querySelector('.modal'); i++) { const b = document.querySelector('.modal .btn.primary') || document.querySelector('.modal .btn'); b.click(); await wait(600); }
+          report(`battle edit over=${B.over} why=${B.why} cities=${G.cities.filter((c) => c.owner === G.player).length}`);
+        }
         else if (stage === 18) { G.missions[5].kind = 'legend'; G.missions[5].stars = 5; click('任務'); await wait(500); report(`board missions=${document.querySelectorAll('.modal .item.mission').length} drill=${document.querySelectorAll('.modal .item.drill .btn').length}`); }
         else if (stage === 16 || stage === 17) {
           // the training ground (16) or an escort mission forced onto the board (17)
@@ -47,6 +69,7 @@ try {
         else if (stage === 14 || stage === 15) {
           click('任務'); await wait(400);
           const goB = [...document.querySelectorAll('.modal .btn.war')].find((b) => !b.disabled); goB.click(); await wait(500);
+          { const m2 = document.querySelector('.modal'); if (m2 && !document.querySelector('.modal .check')) { m2.querySelector('.btn').click(); await wait(400); } }
           click('出發！'); await wait(500); click('出擊'); await wait(2000);
           const B = window.__B;
           if (stage === 14) report(`mission units=${B.units.length} chests=${B.map.chests.length} goal=${B.goal}`);
@@ -97,7 +120,7 @@ try {
       }
     }
   }
-} catch (e) { window.__errs.push('driver ' + e.message); report('driver failed'); }
+} catch (e) { if (e !== 0) { window.__errs.push('driver ' + e.message); report('driver failed'); } }
 </script>
 """
 s = s.replace('<head>', '<head>\n' + pre, 1).replace('</body>', drv + '</body>', 1)

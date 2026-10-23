@@ -6,6 +6,7 @@ import { MapView } from './mapview.js';
 import { portrait } from './sprites.js';
 import { nm, cityName } from './names.js';
 import { runBattle } from './battleui.js';
+import { openEditor } from './editor.js';
 import { LINES, STRATS, USABLES, GEAR, LEARN, tierOf } from '../data/rules.js';
 import { battleStats, itemDef, fits, TREASURES } from '../core/officer.js';
 import * as C from '../core/campaign.js';
@@ -50,6 +51,7 @@ export async function runCampaign(G, { save, quit }) {
       el('button', { class: 'btn', onclick: () => officerList() }, T('武將', 'Officers')),
       el('button', { class: 'btn', onclick: () => bagSheet() }, T('道具', 'Items')),
       el('button', { class: 'btn', onclick: () => chronicle() }, T('記錄', 'Chronicle')),
+      el('button', { class: 'btn', title: T('隨時調整任何數值', 'Change any value at any time'), onclick: () => openEditor(G, { onChange: () => drawSide(), onClose: () => { save(); drawSide(); } }) }, T('⚙ 修改', '⚙ Edit')),
       el('button', { class: 'btn', onclick: () => sysMenu() }, T('選單', 'Menu')),
       el('button', { class: 'btn primary', onclick: () => endMonth() }, T('結束月份 ▶', 'End month ▶')));
     const recent = G.log.slice(-3).reverse();
@@ -158,7 +160,7 @@ export async function runCampaign(G, { save, quit }) {
     await modal(el('div', {}, el('div', { class: 'title', style: { fontSize: '22px' } }, T(K.name)), el('div', {}, T(K.desc)),
       K.legend && lead ? el('div', { style: { marginTop: '6px', color: 'var(--gold2)' } }, T(`敵將：${lead.o.name}（Lv${lead.o.lv}）`, `Foe: ${nm(lead.o.name)} (Lv${lead.o.lv})`)) : null,
       el('div', { class: 'small dim', style: { marginTop: '6px' } }, T(`${THEMES[m.theme].name[0]} · 敵軍 ${m.foes} 隊${B.waves && B.waves.length ? ` · 援兵 ${B.waves.length} 波` : ''} · 寶箱 ${B.map.chests.length} 個 · ${goalTag(K)} · 限 ${B.limit} 回合`, `${THEMES[m.theme].name[1]} · ${m.foes} enemy units${B.waves && B.waves.length ? ` · ${B.waves.length} waves` : ''} · ${B.map.chests.length} chests · ${goalTag(K)} · ${B.limit} turns`))), [T('出擊', 'Go')]);
-    await runBattle(B, { bag: G.bag });
+    await runBattle(B, { bag: G.bag, G });
     const res = C.settleMission(G, B, m);
     clear(); alive = true; busy = false; last = performance.now(); fitMap(); map.bg = null; addEventListener('resize', onResize); requestAnimationFrame(frame); ui.append(top, side, chron); music('world');
     const mine = B.units.filter((u) => u.side === 'atk');
@@ -242,7 +244,7 @@ export async function runCampaign(G, { save, quit }) {
     if (auto) C.autoBattle(B);
     else {
       await preBattle(B, defending);
-      B = await runBattle(B, { bag: G.bag });
+      B = await runBattle(B, { bag: G.bag, G });
     }
     const res = C.settle(G, B);
     // back to the map

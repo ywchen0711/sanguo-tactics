@@ -19,7 +19,7 @@ const handlers = [];
 export const pushKeys = (fn) => { handlers.push(fn); return () => { const i = handlers.indexOf(fn); if (i >= 0) handlers.splice(i, 1); }; };
 const KEYMAP = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', Enter: 'ok', ' ': 'ok', z: 'ok', Z: 'ok', Escape: 'back', x: 'back', X: 'back', Backspace: 'back', q: 'rotl', Q: 'rotl', e: 'rotr', E: 'rotr', Tab: 'tab', m: 'mute', M: 'mute' };
 addEventListener('keydown', (ev) => {
-  if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA')) return;
+  if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA' || ev.target.tagName === 'SELECT')) return;
   const k = KEYMAP[ev.key]; if (!k) return;
   const h = handlers[handlers.length - 1];
   if (h) { ev.preventDefault(); h(k, ev); }
