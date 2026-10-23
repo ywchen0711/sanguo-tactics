@@ -418,12 +418,8 @@ function newYear(G) {
 function aiTurn(G, f, threats) {
   const r = dice(G, f.id.length * 97 + f.id.charCodeAt(0));
   const cities = citiesOf(G, f.id);
+  aiRedeploy(G, f.id, cities);           // officers who travel spend the month on the road
   aiDevelop(G, f, cities, r);
-  // send spare officers toward the front
-  for (const c of cities) {
-    const os = officersIn(G, c), front = c.adj.map((i) => G.cities[i]).filter((d) => d.owner === f.id && d.adj.some((j) => G.cities[j].owner !== f.id) && officersIn(G, d).length < 3);
-    if (os.length > 4 && front.length) { const o = os.filter((x) => !isLord(G, x)).sort((a, b) => quality(a) - quality(b))[0]; if (o) { o.city = front[0].id; o.done = true; } }
-  }
   // captives: try to win them over, else let them go
   for (const o of G.officers.filter((x) => x.status === 'captive' && x.captiveOf === f.id)) { if (r() < 0.4 && !isLord(G, o)) join(G, o, f.id, cities[0].id); else release(G, o); }
   // war: at most one campaign a month, against a clearly weaker neighbour it has no pact with
@@ -434,6 +430,64 @@ function aiTurn(G, f, threats) {
       else { const B = battleSetup(G, plan.args); autoBattle(B); settle(G, B); }
     }
   }
+}
+// ---------------------------------------------------------------- 調度: officers and soldiers go where they are needed
+// how many officers a city wants: a threatened border the most (more the more it is outgunned), then any border, then
+// interior towns with farms, markets or walls still to build. Moves go one road a month through the house's own land.
+function ownDist(G, fid, starts) {
+  const d = new Map(starts.map((id) => [id, 0])), q = [...starts];
+  while (q.length) { const id = q.shift(); for (const j of G.cities[id].adj) if (G.cities[j].owner === fid && !d.has(j)) { d.set(j, d.get(id) + 1); q.push(j); } }
+  return d;
+}
+const nextHop = (G, fid, from, dist) => G.cities[from].adj.find((j) => G.cities[j].owner === fid && dist.get(j) === dist.get(from) - 1);
+export function staffNeeds(G, fid, cities = citiesOf(G, fid)) {
+  return cities.map((c) => {
+    const foes = c.adj.map((j) => G.cities[j]).filter((d) => d.owner && d.owner !== fid && !atPeace(G, fid, d.owner));
+    const border = c.adj.some((j) => G.cities[j].owner !== fid);
+    const threat = foes.length ? Math.max(...foes.map((d) => cityPower(G, d))) : 0;
+    const ratio = threat ? cityPower(G, c) / threat : 9;
+    const work = c.farm < c.farmMax || c.trade < c.tradeMax || c.wall < c.wallMax;
+    let want = threat ? clamp(3 + Math.ceil((1.3 - ratio) * 4), 3, 8) : border ? 3 : work ? 2 : 1;
+    if (c.size >= 2 && border) want++;
+    const os = officersIn(G, c);
+    return { c, want, have: os.length, threat, ratio, border, os };
+  });
+}
+export function aiRedeploy(G, fid, cities = citiesOf(G, fid)) {
+  if (cities.length < 2) return [];
+  const moves = [], S = staffNeeds(G, fid, cities), byId = new Map(S.map((s) => [s.c.id, s]));
+  const free = (s) => s.os.filter((o) => !o.done && !isLord(G, o) && o.city === s.c.id);
+  // neediest first: empty cities, then threatened borders by how badly they are outgunned, then other borders
+  const needy = S.filter((s) => s.have < s.want).sort((a, b) => (b.have === 0) - (a.have === 0) || (b.threat ? 2 - Math.min(2, b.ratio) : b.border ? 0.3 : 0) - (a.threat ? 2 - Math.min(2, a.ratio) : a.border ? 0.3 : 0) || (b.want - b.have) - (a.want - a.have));
+  for (const n of needy) {
+    const dist = ownDist(G, fid, [n.c.id]);
+    while (n.have < n.want && moves.length < 8) {
+      // the nearest city with officers to spare (a threatened city never gives any away)
+      const src = S.filter((s) => s !== n && dist.has(s.c.id) && s.have > s.want && !(s.threat && s.ratio < 1.5) && free(s).length).sort((a, b) => dist.get(a.c.id) - dist.get(b.c.id) || (b.have - b.want) - (a.have - a.want))[0];
+      if (!src) break;
+      // fighters for the front, administrators for the towns; keep each source's own best general home
+      const pool = free(src).sort((a, b) => quality(b) - quality(a));
+      const o = n.border ? (src.border && pool.length > 1 ? pool[1] : pool[0]) : pool.sort((a, b) => b.pol - a.pol)[0];
+      const hop = nextHop(G, fid, src.c.id, dist); if (!hop) break;
+      o.city = hop; o.done = true; src.have--; n.have++;
+      if (hop !== n.c.id) { const mid = byId.get(hop); if (mid) mid.want++; }   // travelling through: not a spare there next month
+      moves.push({ o: o.id, from: src.c.id, to: hop, for: n.c.id });
+    }
+  }
+  // soldiers: safe towns keep a garrison and send the rest one road toward the most threatened border
+  const fronts = S.filter((s) => s.threat).sort((a, b) => a.ratio - b.ratio), goal = fronts.length ? fronts.filter((s) => s.ratio < fronts[0].ratio * 1.5 + 0.2) : S.filter((s) => s.border);
+  if (goal.length) {
+    const dist = ownDist(G, fid, goal.map((s) => s.c.id));
+    for (const s of S) {
+      if (s.threat && s.ratio < 2) continue;
+      const keep = s.threat || s.border ? capOf(s.c) * 0.6 : Math.max(2000, capOf(s.c) * 0.25), spare = Math.floor((s.c.troops - keep) / 100) * 100;
+      if (spare < 500 || !dist.get(s.c.id)) continue;
+      const hop = nextHop(G, fid, s.c.id, dist); if (!hop) continue;
+      const d = G.cities[hop], n = Math.min(spare, capOf(d) - d.troops);
+      if (n >= 500) { transport(G, s.c.id, hop, { troops: n, food: Math.min(Math.round(n / 4), Math.max(0, s.c.food - 2000)) }); moves.push({ troops: n, from: s.c.id, to: hop }); }
+    }
+  }
+  return moves;
 }
 // the best attack this house could make: { c, d, args } or null
 export function warPlan(G, fid, r, need = 1.25, idleOnly = false) {

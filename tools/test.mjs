@@ -42,6 +42,20 @@ for (const sc of SCENARIOS) {
   ok(`scenario ${sc.id}: four years run`, !err && bad === 0, `${serving} officers serving at start · ${alive}/${Object.keys(G.factions).length} houses left · ${G.year}/${G.month} · ${bad} inconsistencies · ${Date.now() - t0} ms`);
 }
 
+// 調度: a house sends officers to a city it has emptied, and never moves its lord
+{
+  const G = C.newGame({ scenario: '190', player: 'cao', seed: 5 });
+  let pick = null;
+  for (const f of Object.values(G.factions)) {
+    if (f.id === G.player) continue;
+    for (const b of C.citiesOf(G, f.id)) { const a = b.adj.map((j) => G.cities[j]).find((x) => x.owner === f.id); if (a && C.officersIn(G, b).length && !C.officersIn(G, b).some((o) => C.isLord(G, o))) { pick = { f, a, b }; break; } }
+    if (pick) break;
+  }
+  for (const o of C.officersIn(G, pick.b)) o.city = pick.a.id;
+  const lord = C.lordOf(G, pick.f.id), lordCity = lord.city;
+  const moves = C.aiRedeploy(G, pick.f.id);
+  ok('the AI staffs an emptied city', C.officersIn(G, pick.b).length > 0 && lord.city === lordCity, `${pick.f.id}: ${moves.filter((m) => m.o).length} officer moves, ${C.officersIn(G, pick.b).length} now in the emptied city`);
+}
 // a player's battle: units, phases, attacks, strategies and the end
 {
   const G = C.newGame({ scenario: '190', player: 'cao', seed: 7 });
