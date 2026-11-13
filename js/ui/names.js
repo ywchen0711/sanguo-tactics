@@ -11,6 +11,6 @@ export function romanize(name, place = false) {
   const sur = COMPOUND.find((s) => name.startsWith(s)) || name[0], rest = name.slice(sur.length);
   return rest ? `${cap(py(sur))} ${cap(py(rest))}` : cap(py(sur));
 }
-const GENERIC = { 守將: 'Garrison Captain', 守備兵: 'Garrison', 弓手隊: 'Bowmen', 鄉勇: 'Volunteers', 民兵: 'Militia', 騎兵隊: 'Riders', 謀士: 'Adviser', 守軍: 'Garrison' };
+const GENERIC = { 守將: 'Garrison Captain', 守備兵: 'Garrison', 弓手隊: 'Bowmen', 鄉勇: 'Volunteers', 民兵: 'Militia', 騎兵隊: 'Riders', 謀士: 'Adviser', 守軍: 'Garrison', 箭樓: 'Arrow Tower' };
 export const nm = (name) => (EN ? GENERIC[name] || romanize(name) : name);
 export const cityName = (name) => (EN ? romanize(name, true) : name);

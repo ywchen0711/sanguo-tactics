@@ -117,6 +117,7 @@ export class MapView {
     }
     g.setLineDash([]);
     // cities
+    const labels = [];
     for (const c of G.cities) {
       const f = c.owner && G.factions[c.owner], col = f ? f.color : '#9a9488', x = X(c.x), y = Y(c.y), r = s * (0.9 + c.size * 0.35);
       const mark = this.marks.get(c.id);
@@ -126,13 +127,23 @@ export class MapView {
       const o = objectSprite('citytown', 0, col), sc = Math.max(1, s * (0.1 + c.size * 0.025));
       g.imageSmoothingEnabled = false; g.drawImage(o.c, Math.round(x - o.w * sc / 2), Math.round(y - o.h * sc * 0.75), Math.round(o.w * sc), Math.round(o.h * sc));
       if (c.owner === G.player) { g.strokeStyle = '#ffe27a'; g.lineWidth = Math.max(2, s * 0.3); g.beginPath(); g.ellipse(x, y + o.h * sc * 0.22, o.w * sc * 0.62, o.h * sc * 0.2, 0, 0, Math.PI * 2); g.stroke(); }
-      // its name, bold white with a dark outline
-      const fs = Math.round(Math.max(10 * this.dpr, s * 1.3));
-      g.font = `900 ${fs}px "Noto Sans TC", sans-serif`; g.textAlign = 'center'; g.lineJoin = 'round';
-      g.lineWidth = Math.max(3, fs / 4); g.strokeStyle = '#2e1a0c'; g.strokeText(cityName(c.name), x, y + o.h * sc * 0.25 + fs);
-      g.fillStyle = c.owner === G.player ? '#ffe27a' : '#ffffff'; g.fillText(cityName(c.name), x, y + o.h * sc * 0.25 + fs);
-      g.textAlign = 'start';
+      labels.push({ c, x, below: y + o.h * sc * 0.25, above: y - o.h * sc * 0.75 });
     }
+    // the names, bold white with a dark outline; on a small map (an upright phone, long English names) they would print
+    // over each other: a name that would touch one already written goes above its town instead, or is left out
+    // (the selected city, your own and the big ones are written first)
+    const fs = Math.round(Math.max(10 * this.dpr, s * 1.3)), placed = [];
+    g.font = `900 ${fs}px "Noto Sans TC", sans-serif`; g.textAlign = 'center'; g.lineJoin = 'round'; g.lineWidth = Math.max(3, fs / 4);
+    const rank = (L) => (this.sel === L.c.id ? 100 : 0) + (L.c.owner === G.player ? 50 : 0) + (this.marks.has(L.c.id) ? 30 : 0) + L.c.size;
+    for (const L of labels.sort((a, b) => rank(b) - rank(a))) {
+      const name = cityName(L.c.name), w = g.measureText(name).width + fs * 0.3, h = fs * 1.15;
+      const fits = (by) => { const r = [L.x - w / 2, by - fs, L.x + w / 2, by - fs + h]; return placed.every((q) => r[2] <= q[0] || r[0] >= q[2] || r[3] <= q[1] || r[1] >= q[3]) ? r : null; };
+      const by = [L.below + fs, L.above - fs * 0.2].find((b) => fits(b)); if (by == null && this.sel !== L.c.id) continue;
+      const yy = by ?? L.below + fs; placed.push([L.x - w / 2, yy - fs, L.x + w / 2, yy - fs + h]);
+      g.strokeStyle = '#2e1a0c'; g.strokeText(name, L.x, yy);
+      g.fillStyle = L.c.owner === G.player ? '#ffe27a' : '#ffffff'; g.fillText(name, L.x, yy);
+    }
+    g.textAlign = 'start';
   }
   // the city under a point (CSS pixels)
   pick(G, cssX, cssY) {

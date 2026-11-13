@@ -97,6 +97,7 @@ export async function runBattle(B, opts = {}) {
     hud.tip.style.display = '';
     clear(hud.tip).append(el('b', {}, T(T0.name)), el('span', { class: 'small dim' }, `　${T('防禦', 'DEF')} ${T0.def >= 0 ? '+' : ''}${T0.def}%${T0.heal ? T(`　回復 ${T0.heal}%`, `　heals ${T0.heal}%`) : ''}`),
       el('div', { class: 'small dim' }, `${T('移動消耗', 'Move cost')}：${T('步', 'Foot')} ${cost('foot')} · ${T('騎', 'Horse')} ${cost('horse')} · ${T('山', 'Wild')} ${cost('wild')} · ${T('車', 'Cart')} ${cost('cart')}`));
+    cardH();
   }
   function showCard(u) {
     hud.card.style.display = '';
@@ -111,7 +112,10 @@ export async function runBattle(B, opts = {}) {
       el('div', { class: 'statgrid' }, [['atk', u.s.atk], ['def', u.s.def], ['spi', u.s.spi], ['agi', u.s.agi], ['mor', u.s.mor]].map(([k, v]) => el('div', {}, el('b', {}, T(BUFF_NAMES[k])), v + (u.buf[k] ? (u.buf[k][0] > 0 ? '▲' : '▼') : '')))),
       sts.length ? el('div', { class: 'row', style: { marginTop: '4px', gap: '4px' } }, sts) : null,
       el('div', { class: 'small dim', style: { marginTop: '4px' } }, T('再點一次看詳細情報', 'Tap again for full details')));
+    cardH();
   }
+  // a phone stacks the command menu above the card: tell it how tall the card is, so it never sits on the card's name
+  function cardH() { const c = hud.card.style.display !== 'none' ? hud.card : hud.tip; ui.style.setProperty('--card-h', c.offsetHeight + 'px'); }
   // ------------------------------------------------ full details on any unit (◀ ▶ walk through everyone)
   function infoSheet(u0) {
     return new Promise((resolve) => {
