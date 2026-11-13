@@ -3,6 +3,11 @@
 // and the small animations (walking, striking, strategies, numbers rising off the units) live here too.
 import { unitSprite, groundTex, objectSprite, decorFor, hash, UNIT_W, UNIT_H } from './sprites.js';
 import { AILMENTS } from '../data/rules.js';
+import { T, EN } from '../i18n.js';
+
+// short status tags over a unit's troops bar: every ailment and every raised or lowered stat
+const ST_SHORT = { conf: ['亂', 'CNF'], stop: ['牽', 'PIN'], seal: ['封', 'SIL'], poison: ['毒', 'PSN'] };
+const BUF_SHORT = { atk: ['攻', 'ATK'], def: ['防', 'DEF'], spi: ['精', 'SPI'], agi: ['爆', 'AGI'], mor: ['士', 'MOR'] };
 
 export const BASE = 64;  // a tile's width on screen at zoom 1 (its height is half that)
 const WET = new Set(['river', 'shoal', 'bridge', 'marsh', 'moat']);
@@ -118,7 +123,9 @@ export class Field {
     if (me === 'def') for (const key of m.traps || []) { const [x, y] = key.split(',').map(Number); list.push({ z: x + y - 0.3, draw: () => this.drawObj('trap', x, y, 0) }); }
     for (const u of B.units) if (!u.gone || u.alpha > 0) list.push({ z: (u.ax ?? u.x) + (u.ay ?? u.y) + 0.6, draw: () => this.drawUnit(u, dt) });
     list.sort((a, b) => a.z - b.z);
-    for (const d of list) d.draw();
+    this.tagQ = []; for (const d of list) d.draw();
+    // the status tags go over every unit, so the soldiers in front never hide them
+    for (const [u, cx, barY, a] of this.tagQ) { this.g.globalAlpha = a; this.drawTags(u, cx, barY); } this.g.globalAlpha = 1;
     // effects and numbers on top
     this.fx = this.fx.filter((f) => (f.t += dt) < f.dur);
     for (const f of this.fx) this.drawFx(f);
@@ -160,9 +167,23 @@ export class Field {
     g.fillStyle = '#5a4630'; g.fillRect(barX, barY, bw, bh);
     g.fillStyle = k > 0.5 ? (this.mine(u) ? '#62b8ff' : '#ff7a5a') : k > 0.25 ? '#ffd040' : '#ff3a2a'; g.fillRect(barX, barY, bw * k, bh);
     if (u.commander) { const fs = this.tw * 0.15; g.fillStyle = '#ffd040'; g.strokeStyle = '#2e1e12'; g.lineWidth = 1.5; g.beginPath(); const sx = barX - fs * 1.3, sy = barY + bh / 2; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? fs * 0.45 : fs; g.lineTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr); } g.closePath(); g.fill(); g.stroke(); }
-    Object.keys(u.st).forEach((k2, i) => { g.fillStyle = AILMENTS[k2] ? AILMENTS[k2][2] : '#fff'; g.strokeStyle = '#2e1e12'; g.lineWidth = 1; g.beginPath(); g.arc(barX + bw + 6 + i * 8, barY + bh / 2, Math.max(3, this.tw / 22), 0, Math.PI * 2); g.fill(); g.stroke(); });
-    const bufs = Object.entries(u.buf); if (bufs.length) { const up = bufs.some(([, v]) => v[0] > 0), ch = up ? '▲' : '▼'; g.font = `900 ${Math.round(this.tw * 0.2)}px sans-serif`; g.fillStyle = up ? '#7aff8a' : '#ff8a7a'; g.strokeStyle = '#2e1e12'; g.lineWidth = 3; g.strokeText(ch, cx + w * 0.3, by + h * 0.5); g.fillText(ch, cx + w * 0.3, by + h * 0.5); }
+    (this.tagQ = this.tagQ || []).push([u, cx, barY, g.globalAlpha]);
     g.globalAlpha = 1;
+  }
+  drawTags(u, cx, barY) {
+    const g = this.g, tags = [];
+    for (const k of Object.keys(u.st)) tags.push([T(ST_SHORT[k] || [k, k]), AILMENTS[k] ? AILMENTS[k][2] : '#fff']);
+    for (const [k, v] of Object.entries(u.buf)) tags.push([T(BUF_SHORT[k] || [k, k]) + (v[0] > 0 ? '▲' : '▼'), v[0] > 0 ? '#7aff8a' : '#ff8a7a']);
+    if (!tags.length) return;
+    const fs = Math.max(9, Math.round(this.tw * (EN ? 0.15 : 0.17))), pad = 2, hh = fs + 2, maxW = this.tw * 1.3;
+    g.save(); g.font = `900 ${fs}px "Noto Sans TC", sans-serif`; g.textBaseline = 'middle'; g.textAlign = 'left';
+    const wOf = (t) => Math.ceil(g.measureText(t).width) + pad * 2;
+    let shown = tags.length, tot = () => tags.slice(0, shown).reduce((a, t) => a + wOf(t[0]) + 1, 0) + (shown < tags.length ? wOf('+' + (tags.length - shown)) : 0);
+    while (shown > 1 && tot() > maxW) shown--;
+    const list = tags.slice(0, shown); if (shown < tags.length) list.push(['+' + (tags.length - shown), '#e8dcc0']);
+    let x = Math.round(cx - tot() / 2); const y = Math.round(barY - hh - 2);
+    for (const [t, c] of list) { const w = wOf(t); g.fillStyle = 'rgba(30,20,12,.88)'; g.fillRect(x, y, w, hh); g.strokeStyle = c; g.lineWidth = 1; g.strokeRect(x + 0.5, y + 0.5, w - 1, hh - 1); g.fillStyle = c; g.fillText(t, x + pad, y + hh / 2 + 1); x += w + 1; }
+    g.restore();
   }
   drawFx(f) {
     const g = this.g, ts = this.ts, k = f.t / f.dur, [sx, sy] = this.scr(f.x, f.y), cx = sx + ts / 2, cy = sy + ts / 2;
